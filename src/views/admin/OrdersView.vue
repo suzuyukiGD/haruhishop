@@ -46,6 +46,11 @@
                                 <button class="admin-btn btn-blue" style="font-size: 0.75rem;" @click="updateStatus(order.id, 2)">收款</button>
                                 <button class="admin-btn btn-outline" style="font-size: 0.75rem; color: #ef4444;" @click="updateStatus(order.id, 0)">取消</button>
                             </template>
+
+                            <!-- 待确认(5) -> 确认收款(2) (Transitions to Pending Shipment) -->
+                            <template v-if="order.status === 5">
+                                <button class="admin-btn btn-blue" style="font-size: 0.75rem;" @click="updateStatus(order.id, 2)">确认收款</button>
+                            </template>
                             
                             <!-- 待发货(2) -> 发货(3) -->
                             <template v-if="order.status === 2">
@@ -88,7 +93,7 @@ const store = useShopStore()
 const filterStatus = ref('all')
 const orders = computed(() => store.state.adminOrders)
 
-const statusOptions = [{ value: 'all', label: '全部' }, { value: 1, label: '待付款' }, { value: 2, label: '待发货' }, { value: 0, label: '已取消' }]
+const statusOptions = [{ value: 'all', label: '全部' }, { value: 1, label: '待付款' }, { value: 5, label: '待确认' }, { value: 2, label: '待发货' }, { value: 0, label: '已取消' }]
 
 const changeFilter = (status) => {
     filterStatus.value = status
@@ -99,7 +104,7 @@ onMounted(() => {
     store.fetchAdminOrders('all')
 })
 
-const getStatusLabel = (s) => (['已取消', '待付款', '待发货', '已发货', '已完成'][s] || '未知')
+const getStatusLabel = (s) => (['已取消', '待付款', '待发货', '已发货', '已完成', '待确认'][s] || '未知')
 
 const updateStatus = async (id, status) => {
     if (status === 0 && !confirm('取消订单将自动回滚库存，确定吗？')) return

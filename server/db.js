@@ -23,7 +23,7 @@ db.serialize(() => {
     )`);
 
     // [修改] 升级订单表，增加地址详情字段
-    // status 定义: 0=已取消, 1=待付款, 2=待发货(已付款), 3=已发货, 4=已完成
+    // status 定义: 0=已取消, 1=待付款, 2=待发货(已付款), 3=已发货, 4=已完成, 5=待确认(用户已付款)
     db.run(`CREATE TABLE IF NOT EXISTS orders (
         id TEXT PRIMARY KEY,
         total INTEGER,

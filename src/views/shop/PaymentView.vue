@@ -59,7 +59,8 @@ const copy = (text) => {
     store.showNotification('已复制')
 }
 
-const confirm = () => {
+const confirm = async () => {
+    await store.updateOrderStatus(order.value.id, 5) // 5 = 待确认
     store.clearCart()
     router.push('/success')
 }
