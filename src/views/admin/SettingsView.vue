@@ -42,15 +42,6 @@
           </div>
         </div>
 
-        <div class="setting-text-group">
-          <label class="form-label">支付页提示文案</label>
-          <textarea v-model.trim="form.payment.paymentNote" class="form-input text-area-input" maxlength="240"></textarea>
-        </div>
-
-        <div class="setting-text-group">
-          <label class="form-label">好友转账提示文案</label>
-          <textarea v-model.trim="form.payment.friendHelpText" class="form-input text-area-input" maxlength="240"></textarea>
-        </div>
       </template>
     </div>
   </div>
@@ -68,9 +59,7 @@ const form = reactive({
   payment: {
     wechatQr: '',
     alipayQr: '',
-    friendQr: '',
-    paymentNote: '',
-    friendHelpText: ''
+    friendQr: ''
   }
 })
 
@@ -79,8 +68,6 @@ const applyConfigToForm = (config) => {
   form.payment.wechatQr = payment.wechatQr || ''
   form.payment.alipayQr = payment.alipayQr || ''
   form.payment.friendQr = payment.friendQr || ''
-  form.payment.paymentNote = payment.paymentNote || ''
-  form.payment.friendHelpText = payment.friendHelpText || ''
 }
 
 const uploadQr = async (event, key) => {
@@ -99,9 +86,7 @@ const saveConfig = async () => {
     payment: {
       wechatQr: form.payment.wechatQr,
       alipayQr: form.payment.alipayQr,
-      friendQr: form.payment.friendQr,
-      paymentNote: form.payment.paymentNote,
-      friendHelpText: form.payment.friendHelpText
+      friendQr: form.payment.friendQr
     }
   })
   if (success) {
@@ -155,15 +140,6 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.setting-text-group {
-  margin-top: 1rem;
-}
-
-.text-area-input {
-  min-height: 86px;
-  resize: vertical;
 }
 
 button:disabled {

@@ -114,7 +114,7 @@ const scrollToTop = () => {
           <span class="slogan-mini">凉宫春日应援团开发组</span>
         </div>
         <div class="bottom-right">
-          <span>本商城为非营利项目。</span>
+          <span>本商城为非营利项目</span>
         </div>
       </div>
     </div>

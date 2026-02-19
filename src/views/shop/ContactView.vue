@@ -51,14 +51,13 @@ const submitMessage = async () => {
       <div>
         <h3 style="font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem;">联系方式</h3>
         <p style="margin-bottom: 1.5rem; opacity: 0.8; font-size: 0.9rem;">如果您对周边或订单有任何疑问，请留言。</p>
-        <ul style="list-style: none; padding: 0; font-size: 0.875rem; line-height: 2;">
-          <li><i class="fa fa-envelope mr-2"></i> sos_brigade@example.com</li>
-          <li><i class="fa fa-phone mr-2"></i> 021-12345678</li>
-          <li><i class="fa fa-map-marker-alt mr-2"></i> 北高文艺部活动室</li>
+        <ul class="contact-list" style="list-style: none; padding: 0; font-size: 0.875rem; line-height: 2;">
+          <li class="contact-item contact-item-email"><i class="fa fa-envelope mr-2"></i> haruhifanclub@outlook.com</li>
+          <li class="contact-item"><i class="fa-brands fa-weixin mr-2" style="color: #07c160;"></i> haruhiism15532</li>
         </ul>
       </div>
       <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.2); opacity: 0.6; font-size: 0.75rem;">
-        &copy; SOS团支部
+        &copy; 凉宫春日应援团
       </div>
     </div>
     <div class="contact-form">
@@ -66,7 +65,7 @@ const submitMessage = async () => {
       <form style="display: flex; flex-direction: column; gap: 1rem;" @submit.prevent="submitMessage">
         <div class="form-grid">
           <input v-model.trim="form.name" type="text" maxlength="60" placeholder="您的称呼" class="input-field">
-          <input v-model.trim="form.contact" type="text" maxlength="80" placeholder="联系方式" class="input-field">
+          <input v-model.trim="form.contact" type="text" maxlength="80" placeholder="联系方式（QQ）" class="input-field">
         </div>
         <input v-model.trim="form.orderId" type="text" maxlength="60" placeholder="订单号 (选填)" class="input-field">
         <textarea
@@ -91,5 +90,19 @@ const submitMessage = async () => {
 .message-limit {
   font-size: 0.75rem;
   color: #9ca3af;
+}
+
+.contact-list {
+  margin: 0;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.contact-item-email {
+  white-space: nowrap;
 }
 </style>

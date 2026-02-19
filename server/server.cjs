@@ -112,9 +112,7 @@ const DEFAULT_SITE_CONFIG = Object.freeze({
     payment: {
         wechatQr: '',
         alipayQr: '',
-        friendQr: '',
-        paymentNote: '请支付后备注订单号后四位，便于快速核销。',
-        friendHelpText: '长按识别二维码添加好友并转账，备注完整订单号。'
+        friendQr: ''
     }
 });
 const COUPON_STATUS = Object.freeze({
@@ -184,12 +182,6 @@ const normalizeSiteConfig = (rawConfig) => {
     normalized.payment.wechatQr = sanitizeConfigUrl(payment.wechatQr);
     normalized.payment.alipayQr = sanitizeConfigUrl(payment.alipayQr);
     normalized.payment.friendQr = sanitizeConfigUrl(payment.friendQr);
-
-    const paymentNote = sanitizeConfigText(payment.paymentNote, 240);
-    if (paymentNote) normalized.payment.paymentNote = paymentNote;
-
-    const friendHelpText = sanitizeConfigText(payment.friendHelpText, 240);
-    if (friendHelpText) normalized.payment.friendHelpText = friendHelpText;
 
     return normalized;
 };
