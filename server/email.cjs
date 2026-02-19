@@ -2,6 +2,8 @@ let nodemailer = null;
 try {
     nodemailer = require('nodemailer');
 } catch { }
+const http = require('http');
+const https = require('https');
 
 const ORDER_STATUS_LABELS = Object.freeze({
     0: '已取消',
@@ -122,6 +124,52 @@ const normalizeResendApiBaseUrl = (value) => {
     if (!raw) return 'https://api.resend.com';
     return raw.replace(/\/+$/, '');
 };
+
+const postJson = (urlString, headers, payload) =>
+    new Promise((resolve, reject) => {
+        let parsedUrl;
+        try {
+            parsedUrl = new URL(urlString);
+        } catch (err) {
+            reject(err);
+            return;
+        }
+
+        const body = JSON.stringify(payload || {});
+        const transport = parsedUrl.protocol === 'https:' ? https : http;
+        const requestOptions = {
+            protocol: parsedUrl.protocol,
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+            path: `${parsedUrl.pathname}${parsedUrl.search}`,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body),
+                ...headers
+            }
+        };
+
+        const req = transport.request(requestOptions, (res) => {
+            let responseText = '';
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => {
+                responseText += chunk;
+            });
+            res.on('end', () => {
+                const status = Number(res.statusCode) || 0;
+                resolve({
+                    status,
+                    ok: status >= 200 && status < 300,
+                    bodyText: responseText
+                });
+            });
+        });
+
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+    });
 
 const statusTextByEvent = (eventKey, status) => {
     if (eventKey === 'order_created') return '待付款';
@@ -353,7 +401,7 @@ const createEmailService = (options = {}) => {
     const resolveProvider = () => {
         if (mailProvider === 'resend') return 'resend';
         if (mailProvider === 'smtp') return 'smtp';
-        if (resendApiKey && typeof fetch === 'function') return 'resend';
+        if (resendApiKey) return 'resend';
         return 'smtp';
     };
 
@@ -366,8 +414,6 @@ const createEmailService = (options = {}) => {
     } else if (providerToUse === 'resend') {
         if (!resendApiKey) {
             unavailableReason = 'Resend 配置不完整（需 RESEND_API_KEY）';
-        } else if (typeof fetch !== 'function') {
-            unavailableReason = '当前 Node 版本不支持 fetch，无法调用 Resend API';
         } else {
             activeProvider = 'resend';
             canSend = true;
@@ -434,21 +480,36 @@ const createEmailService = (options = {}) => {
         };
         if (mailReplyTo) payload.reply_to = mailReplyTo;
 
-        const response = await fetch(`${resendApiBaseUrl}/emails`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${resendApiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
+        let responseInfo = null;
+        if (typeof fetch === 'function') {
+            const response = await fetch(`${resendApiBaseUrl}/emails`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${resendApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            responseInfo = {
+                status: Number(response.status) || 0,
+                ok: response.ok,
+                bodyText: await response.text().catch(() => '')
+            };
+        } else {
+            responseInfo = await postJson(
+                `${resendApiBaseUrl}/emails`,
+                {
+                    Authorization: `Bearer ${resendApiKey}`
+                },
+                payload
+            );
+        }
 
-        if (response.ok) return;
+        if (responseInfo.ok) return;
 
-        const bodyText = await response.text().catch(() => '');
-        const detail = bodyText ? ` - ${bodyText}` : '';
-        const error = new Error(`Resend API 请求失败(${response.status})${detail}`);
-        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        const detail = responseInfo.bodyText ? ` - ${responseInfo.bodyText}` : '';
+        const error = new Error(`Resend API 请求失败(${responseInfo.status})${detail}`);
+        if (responseInfo.status >= 400 && responseInfo.status < 500 && responseInfo.status !== 429) {
             error.nonRetryable = true;
         }
         throw error;

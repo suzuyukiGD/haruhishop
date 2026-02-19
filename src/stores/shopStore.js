@@ -764,6 +764,34 @@ export const useShopStore = () => {
         }
     }
 
+    const updateAdminOrderContact = async (id, contact, statusFilter = null, listFilters = null) => {
+        if (!ensureAdminAuth()) return false
+        try {
+            const res = await fetch(`${ORDER_URL}/${id}/contact`, {
+                method: 'PUT',
+                headers: buildAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ contact: contact || {} })
+            })
+            if (res.status === 401) {
+                handleAdminUnauthorized()
+                return false
+            }
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                showNotification(data.error || '收货信息更新失败')
+                return false
+            }
+            if (statusFilter !== null) {
+                await fetchAdminOrders(statusFilter, listFilters || {})
+            }
+            showNotification('收货信息已更新')
+            return true
+        } catch (e) {
+            showNotification('网络错误')
+            return false
+        }
+    }
+
     const deleteAdminOrder = async (id, statusFilter = null, listFilters = null) => {
         if (!ensureAdminAuth()) return false
         try {
@@ -797,7 +825,7 @@ export const useShopStore = () => {
         setProductType, addToCart, removeFromCart, clearCart, showNotification, setOrder,
         fetchProducts, addProduct, updateProduct, deleteProduct, uploadImage, 
         createOrderBackend, submitOrderPayment,
-        fetchAdminOrders, updateOrderStatus, deleteAdminOrder,
+        fetchAdminOrders, updateOrderStatus, updateAdminOrderContact, deleteAdminOrder,
         previewCoupon, fetchAdminCoupons, createCouponBatch, updateCouponStatus, deleteCoupon,
         submitContactMessage, fetchAdminContactMessages, updateAdminContactMessageStatus,
         fetchSiteConfig, updateSiteConfig,

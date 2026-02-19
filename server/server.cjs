@@ -92,6 +92,7 @@ const STATUS_TRANSITIONS = {
     5: [0, 2]     // 待确认 -> 取消 / 待发货
 };
 const CANCELLABLE_STATUSES = [1, 2, 5];
+const SELF_SERVICE_CONTACT_EDITABLE_STATUSES = new Set([1, 2, 5]);
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123456';
 const ADMIN_AUTH_SECRET = process.env.ADMIN_AUTH_SECRET || 'sos-admin-auth-secret-change-me';
@@ -123,7 +124,7 @@ const COUPON_STATUS = Object.freeze({
 });
 const COUPON_DISCOUNT_TYPES = ['amount', 'percent'];
 const EMAIL_NOTIFICATIONS_ENABLED = String(process.env.EMAIL_NOTIFICATIONS_ENABLED || 'false');
-const MAIL_PROVIDER = process.env.MAIL_PROVIDER || 'smtp';
+const MAIL_PROVIDER = process.env.MAIL_PROVIDER || 'auto';
 const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || 'true');
@@ -230,6 +231,34 @@ const createBadRequestError = (message) => {
     const error = new Error(message);
     error.isBadRequest = true;
     return error;
+};
+
+const normalizeOrderContactInput = (contact) => {
+    if (!contact || typeof contact !== 'object') throw createBadRequestError('收货信息不能为空');
+
+    const contactName = String(contact.name || '').trim();
+    const contactPhone = String(contact.phone || '').trim();
+    const contactEmail = String(contact.email || '').trim();
+    const contactProvince = String(contact.province || '').trim();
+    const contactCity = String(contact.city || '').trim();
+    const contactDistrict = String(contact.district || '').trim();
+    const contactAddressDetail = String(contact.addressDetail || contact.address || '').trim();
+
+    if (!contactName) throw createBadRequestError('收货人姓名不能为空');
+    if (!/^1[3-9]\d{9}$/.test(contactPhone)) throw createBadRequestError('手机号格式错误');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) throw createBadRequestError('邮箱格式错误');
+    if (!contactProvince || !contactCity || !contactDistrict) throw createBadRequestError('省市区信息不完整');
+    if (!contactAddressDetail) throw createBadRequestError('详细地址不能为空');
+
+    return {
+        contactName,
+        contactPhone,
+        contactEmail,
+        contactProvince,
+        contactCity,
+        contactDistrict,
+        contactAddressDetail
+    };
 };
 
 const cloneDefaultSiteConfig = () => JSON.parse(JSON.stringify(DEFAULT_SITE_CONFIG));
@@ -1522,6 +1551,71 @@ app.get(apiPath('/orders/:id'), (req, res) => {
             }
         });
     });
+});
+
+// 修改订单收货信息：
+// - 用户端：需手机号后四位校验，且仅允许未发货订单
+// - 管理端：携带管理员 token 可直接修改
+app.put(apiPath('/orders/:id/contact'), async (req, res) => {
+    const orderId = String(req.params.id || '').trim();
+    if (!orderId) return res.status(400).json({ error: '订单号不能为空' });
+
+    try {
+        const existingOrder = await dbGet(
+            'SELECT id, status, contactPhone FROM orders WHERE id = ?',
+            [orderId]
+        );
+        if (!existingOrder) return res.status(404).json({ error: '订单不存在' });
+
+        const adminPayload = verifyAdminToken(extractBearerToken(req));
+        const isAdmin = Boolean(adminPayload && adminPayload.role === 'admin');
+
+        if (!isAdmin) {
+            const phoneLast4 = String(req.body?.phoneLast4 || req.query?.phoneLast4 || '').trim();
+            if (!/^\d{4}$/.test(phoneLast4)) {
+                return res.status(400).json({ error: '请填写手机号后四位' });
+            }
+
+            const expectedLast4 = extractPhoneLast4(existingOrder.contactPhone);
+            if (!expectedLast4 || phoneLast4 !== expectedLast4) {
+                return res.status(403).json({ error: '手机号后四位校验失败' });
+            }
+
+            if (!SELF_SERVICE_CONTACT_EDITABLE_STATUSES.has(Number(existingOrder.status))) {
+                return res.status(400).json({ error: '订单已发货，仅支持联系管理员修改收货信息' });
+            }
+        }
+
+        const normalized = normalizeOrderContactInput(req.body?.contact);
+        await dbRun(
+            `UPDATE orders
+             SET contactName = ?,
+                 contactPhone = ?,
+                 contactEmail = ?,
+                 province = ?,
+                 city = ?,
+                 district = ?,
+                 addressDetail = ?
+             WHERE id = ?`,
+            [
+                normalized.contactName,
+                normalized.contactPhone,
+                normalized.contactEmail,
+                normalized.contactProvince,
+                normalized.contactCity,
+                normalized.contactDistrict,
+                normalized.contactAddressDetail,
+                orderId
+            ]
+        );
+
+        const updatedOrder = await dbGet('SELECT * FROM orders WHERE id = ?', [orderId]);
+        if (!updatedOrder) return res.status(404).json({ error: '订单不存在' });
+        res.json(mapOrderRow(updatedOrder));
+    } catch (err) {
+        if (err?.isBadRequest) return res.status(400).json({ error: err.message });
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // 用户提交支付凭证：待付款(1) -> 待确认(5)

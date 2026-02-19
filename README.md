@@ -29,7 +29,7 @@ VITE_DEV_API_TARGET=http://localhost:13221
 
 # 订单状态邮件通知（SMTP / Resend）
 EMAIL_NOTIFICATIONS_ENABLED=false
-MAIL_PROVIDER=smtp
+MAIL_PROVIDER=auto
 MAIL_FROM_NAME=春日商城
 MAIL_FROM_ADDRESS=notify@example.com
 MAIL_REPLY_TO=service@example.com
@@ -63,7 +63,7 @@ RESEND_API_BASE_URL=https://api.resend.com
 - `VITE_BASE_PATH` 末尾必须带 `/`，例如 `/shop/`。
 - `FREE_SHIPPING_THRESHOLD` 为包邮门槛（元），默认 `150`。
 - 邮件通知默认关闭，设置 `EMAIL_NOTIFICATIONS_ENABLED=true` 后生效。
-- `MAIL_PROVIDER` 支持 `smtp` / `resend` / `auto`（`auto` 会优先使用 Resend，若不可用则回退 SMTP）。
+- `MAIL_PROVIDER` 支持 `smtp` / `resend` / `auto`（推荐 `auto`，会优先使用 Resend，若不可用则回退 SMTP）。
 - 使用 Resend 时需配置 `RESEND_API_KEY`，`MAIL_FROM_ADDRESS` 必须是 Resend 可用发件地址（测试可用 `onboarding@resend.dev`）。
 - `SMTP_AUTH_MODE` 支持 `auto` / `password` / `oauth2`：
   - `password`：使用 `SMTP_USER` + `SMTP_PASS`（传统账号/应用专用密码）。

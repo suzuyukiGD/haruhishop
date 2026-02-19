@@ -77,6 +77,7 @@
             </td>
             <td style="font-size: 0.85rem;">
               <div><strong>{{ order.contact.name }}</strong> {{ order.contact.phone }}</div>
+              <div class="text-sub">{{ order.contact.email || '-' }}</div>
               <div class="text-sub">{{ order.contact.province }}{{ order.contact.city }}{{ order.contact.district }}</div>
               <div class="text-sub" style="max-width: 200px;">{{ order.contact.addressDetail }}</div>
             </td>
@@ -86,6 +87,7 @@
             </td>
             <td style="text-align: center;">
               <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                <button class="admin-btn btn-outline" style="font-size: 0.75rem;" @click="openEditContact(order)">修改收货</button>
                 <template v-if="order.status === 1">
                   <button class="admin-btn btn-blue" style="font-size: 0.75rem;" @click="updateStatus(order.id, 2)">收款</button>
                   <button class="admin-btn btn-outline" style="font-size: 0.75rem; color: #ef4444;" @click="updateStatus(order.id, 0)">取消</button>
@@ -126,6 +128,49 @@
         <div class="modal-actions">
           <button @click="shipModal.show = false" class="admin-btn btn-outline">取消</button>
           <button @click="confirmShip" class="admin-btn btn-blue">确认发货</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="editContactModal.show" class="modal-overlay">
+      <div class="modal-card">
+        <h3 class="modal-title">修改收货信息</h3>
+        <div class="contact-edit-grid">
+          <div>
+            <label class="form-label">收货人姓名</label>
+            <input v-model.trim="editContactModal.form.name" type="text" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">手机号</label>
+            <input v-model.trim="editContactModal.form.phone" type="tel" maxlength="11" class="form-input">
+          </div>
+          <div class="col-span-2">
+            <label class="form-label">邮箱</label>
+            <input v-model.trim="editContactModal.form.email" type="email" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">省</label>
+            <input v-model.trim="editContactModal.form.province" type="text" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">市</label>
+            <input v-model.trim="editContactModal.form.city" type="text" class="form-input">
+          </div>
+          <div class="col-span-2">
+            <label class="form-label">区/县</label>
+            <input v-model.trim="editContactModal.form.district" type="text" class="form-input">
+          </div>
+          <div class="col-span-2">
+            <label class="form-label">详细地址</label>
+            <input v-model.trim="editContactModal.form.addressDetail" type="text" class="form-input">
+          </div>
+        </div>
+        <p v-if="editContactModal.error" class="text-danger">{{ editContactModal.error }}</p>
+        <div class="modal-actions">
+          <button @click="closeEditContactModal" class="admin-btn btn-outline">取消</button>
+          <button @click="confirmEditContact" class="admin-btn btn-blue" :disabled="editContactModal.saving">
+            {{ editContactModal.saving ? '保存中...' : '保存' }}
+          </button>
         </div>
       </div>
     </div>
@@ -280,6 +325,90 @@ const confirmShip = async () => {
   if (success) shipModal.show = false
 }
 
+const editContactModal = reactive({
+  show: false,
+  id: '',
+  saving: false,
+  error: '',
+  form: {
+    name: '',
+    phone: '',
+    email: '',
+    province: '',
+    city: '',
+    district: '',
+    addressDetail: ''
+  }
+})
+
+const closeEditContactModal = () => {
+  editContactModal.show = false
+  editContactModal.saving = false
+  editContactModal.error = ''
+}
+
+const openEditContact = (order) => {
+  if (!order) return
+  editContactModal.id = order.id
+  editContactModal.error = ''
+  editContactModal.form.name = String(order.contact?.name || '')
+  editContactModal.form.phone = String(order.contact?.phone || '')
+  editContactModal.form.email = String(order.contact?.email || '')
+  editContactModal.form.province = String(order.contact?.province || '')
+  editContactModal.form.city = String(order.contact?.city || '')
+  editContactModal.form.district = String(order.contact?.district || '')
+  editContactModal.form.addressDetail = String(order.contact?.addressDetail || '')
+  editContactModal.show = true
+}
+
+const confirmEditContact = async () => {
+  if (!editContactModal.id || editContactModal.saving) return
+  editContactModal.error = ''
+
+  if (!editContactModal.form.name.trim()) {
+    editContactModal.error = '请填写收货人姓名'
+    return
+  }
+  if (!/^1[3-9]\d{9}$/.test(editContactModal.form.phone.trim())) {
+    editContactModal.error = '手机号格式错误'
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editContactModal.form.email.trim())) {
+    editContactModal.error = '邮箱格式错误'
+    return
+  }
+  if (!editContactModal.form.province.trim() || !editContactModal.form.city.trim() || !editContactModal.form.district.trim()) {
+    editContactModal.error = '省市区信息不完整'
+    return
+  }
+  if (!editContactModal.form.addressDetail.trim()) {
+    editContactModal.error = '详细地址不能为空'
+    return
+  }
+
+  editContactModal.saving = true
+  const success = await store.updateAdminOrderContact(
+    editContactModal.id,
+    {
+      name: editContactModal.form.name.trim(),
+      phone: editContactModal.form.phone.trim(),
+      email: editContactModal.form.email.trim(),
+      province: editContactModal.form.province.trim(),
+      city: editContactModal.form.city.trim(),
+      district: editContactModal.form.district.trim(),
+      addressDetail: editContactModal.form.addressDetail.trim()
+    },
+    filterStatus.value,
+    buildListFilters()
+  )
+  editContactModal.saving = false
+  if (success) {
+    closeEditContactModal()
+  } else {
+    editContactModal.error = '修改失败，请检查输入或稍后重试'
+  }
+}
+
 const toCsvCell = (value) => {
   if (value === null || value === undefined) return ''
   const text = String(value).replace(/"/g, '""')
@@ -369,6 +498,26 @@ button:disabled {
   border-color: #fca5a5;
 }
 
+.contact-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.contact-edit-grid .form-input {
+  margin-bottom: 0.2rem;
+}
+
+.col-span-2 {
+  grid-column: span 2;
+}
+
+.text-danger {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: #dc2626;
+}
+
 @media (max-width: 1023px) {
   .toolbar-query,
   .toolbar-actions {
@@ -407,6 +556,14 @@ button:disabled {
 
   .checkbox-cell {
     width: 2.25rem;
+  }
+
+  .contact-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .col-span-2 {
+    grid-column: span 1;
   }
 }
 </style>
