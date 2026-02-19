@@ -207,6 +207,8 @@ watch([cartTotal, shippingFee], () => {
 })
 
 const submitOrder = async () => {
+    if (isSubmitting.value) return
+
     const error = validateForm()
     if (error) {
         store.showNotification(error)

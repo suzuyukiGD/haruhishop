@@ -83,7 +83,23 @@
         </select>
         <input v-model.trim="filters.batchNo" class="form-input" style="width: 180px; margin-bottom: 0;" placeholder="按批次号筛选">
         <input v-model.trim="filters.keyword" class="form-input" style="width: 220px; margin-bottom: 0;" placeholder="按券码或名称搜索">
-        <button class="admin-btn btn-blue" @click="loadCoupons">查询</button>
+        <select v-model="filters.sortBy" class="form-select" style="width: 120px; margin-bottom: 0;">
+          <option value="created_at">按创建时间</option>
+          <option value="expiresAt">按有效期</option>
+          <option value="minSpend">按门槛</option>
+          <option value="status">按状态</option>
+          <option value="id">按ID</option>
+        </select>
+        <select v-model="filters.sortDir" class="form-select" style="width: 90px; margin-bottom: 0;">
+          <option value="desc">降序</option>
+          <option value="asc">升序</option>
+        </select>
+        <select v-model.number="filters.pageSize" class="form-select" style="width: 90px; margin-bottom: 0;">
+          <option :value="10">10/页</option>
+          <option :value="20">20/页</option>
+          <option :value="50">50/页</option>
+        </select>
+        <button class="admin-btn btn-blue" @click="searchCoupons">查询</button>
       </div>
 
       <div v-if="loading" class="text-sub">加载中...</div>
@@ -150,6 +166,11 @@
           </tbody>
         </table>
       </div>
+      <div class="toolbar pagination-row">
+        <span class="text-sub">共 {{ couponsMeta.total }} 张，第 {{ couponsMeta.page }} / {{ couponsMeta.totalPages }} 页</span>
+        <button class="admin-btn btn-outline" :disabled="couponsMeta.page <= 1" @click="goPrevPage">上一页</button>
+        <button class="admin-btn btn-outline" :disabled="couponsMeta.page >= couponsMeta.totalPages" @click="goNextPage">下一页</button>
+      </div>
     </div>
   </div>
 </template>
@@ -166,6 +187,7 @@ const selectedIds = ref(new Set())
 const latestBatchCodes = ref([])
 
 const coupons = computed(() => store.state.adminCoupons)
+const couponsMeta = computed(() => store.state.adminCouponsMeta || { page: 1, pageSize: 20, total: 0, totalPages: 1 })
 const selectedCount = computed(() => [...selectedIds.value].length)
 const allSelected = computed(() => coupons.value.length > 0 && selectedCount.value === coupons.value.length)
 const partiallySelected = computed(() => selectedCount.value > 0 && selectedCount.value < coupons.value.length)
@@ -173,7 +195,10 @@ const partiallySelected = computed(() => selectedCount.value > 0 && selectedCoun
 const filters = reactive({
   status: 'all',
   batchNo: '',
-  keyword: ''
+  keyword: '',
+  sortBy: 'created_at',
+  sortDir: 'desc',
+  pageSize: 20
 })
 
 const createForm = reactive({
@@ -188,13 +213,19 @@ const createForm = reactive({
   expiresAt: ''
 })
 
-const loadCoupons = async () => {
+const buildQuery = (page = 1) => ({
+  status: filters.status,
+  batchNo: filters.batchNo,
+  keyword: filters.keyword,
+  sortBy: filters.sortBy,
+  sortDir: filters.sortDir,
+  page,
+  pageSize: filters.pageSize
+})
+
+const loadCoupons = async (page = 1) => {
   loading.value = true
-  await store.fetchAdminCoupons({
-    status: filters.status,
-    batchNo: filters.batchNo,
-    keyword: filters.keyword
-  })
+  await store.fetchAdminCoupons(buildQuery(page))
   loading.value = false
 }
 
@@ -221,7 +252,7 @@ const createBatch = async () => {
   if (!result) return
   latestBatchCodes.value = Array.isArray(result.codes) ? result.codes : []
   createForm.batchNo = result.batchNo || createForm.batchNo
-  await loadCoupons()
+  await loadCoupons(1)
 }
 
 const toggleSelectOne = (id, checked) => {
@@ -256,7 +287,7 @@ const statusClass = (coupon) => {
 const toggleStatus = async (coupon) => {
   const nextStatus = coupon.status === 1 ? 0 : 1
   const success = await store.updateCouponStatus(coupon.id, nextStatus)
-  if (success) await loadCoupons()
+  if (success) await loadCoupons(couponsMeta.value.page)
 }
 
 const removeCoupon = async (coupon) => {
@@ -266,7 +297,21 @@ const removeCoupon = async (coupon) => {
   const next = new Set(selectedIds.value)
   next.delete(coupon.id)
   selectedIds.value = next
-  await loadCoupons()
+  await loadCoupons(couponsMeta.value.page)
+}
+
+const searchCoupons = () => {
+  loadCoupons(1)
+}
+
+const goPrevPage = () => {
+  if (couponsMeta.value.page <= 1) return
+  loadCoupons(couponsMeta.value.page - 1)
+}
+
+const goNextPage = () => {
+  if (couponsMeta.value.page >= couponsMeta.value.totalPages) return
+  loadCoupons(couponsMeta.value.page + 1)
 }
 
 const exportSelectedCodes = () => {
@@ -380,6 +425,11 @@ onMounted(loadCoupons)
   align-items: center;
   flex-wrap: wrap;
   margin-bottom: 0.75rem;
+}
+
+.pagination-row {
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 .checkbox-cell {

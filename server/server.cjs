@@ -682,6 +682,10 @@ app.get('/api/admin/coupons', requireAdminAuth, async (req, res) => {
     const status = String(req.query.status || 'all');
     const batchNo = sanitizeConfigText(req.query.batchNo || '', 80);
     const keyword = sanitizeConfigText(req.query.keyword || '', 80);
+    const sortBy = String(req.query.sortBy || 'created_at');
+    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 20));
     const conditions = [];
     const params = [];
 
@@ -705,20 +709,38 @@ app.get('/api/admin/coupons', requireAdminAuth, async (req, res) => {
     }
 
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sortByMap = {
+        created_at: 'created_at',
+        expiresAt: 'expiresAt',
+        minSpend: 'minSpend',
+        status: 'status',
+        id: 'id'
+    };
+    const orderByField = sortByMap[sortBy] || 'created_at';
+    const offset = (page - 1) * pageSize;
 
     try {
+        const countRow = await dbGet(`SELECT COUNT(*) AS total FROM coupons ${whereSql}`, params);
+        const total = Number(countRow?.total) || 0;
+        const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+
         const rows = await dbAll(
             `SELECT * FROM coupons
              ${whereSql}
-             ORDER BY created_at DESC, id DESC`,
-            params
+             ORDER BY ${orderByField} ${sortDir}, id DESC
+             LIMIT ? OFFSET ?`,
+            [...params, pageSize, offset]
         );
-        res.json(
-            rows.map((row) => {
+        const items = rows.map((row) => {
                 const coupon = formatCoupon(row);
                 return { ...coupon, benefitText: getCouponBenefitText(coupon) };
-            })
-        );
+        });
+        res.json({
+            items,
+            pagination: { page, pageSize, total, totalPages },
+            sort: { by: orderByField, dir: sortDir.toLowerCase() },
+            filters: { status, batchNo, keyword }
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -958,31 +980,68 @@ app.delete('/api/products/:id', requireAdminAuth, (req, res) => {
 
 // 1. 获取订单列表 (支持状态过滤)
 app.get('/api/orders', requireAdminAuth, (req, res) => {
-    const status = req.query.status;
-    let sql = "SELECT * FROM orders ORDER BY created_at DESC";
-    let params = [];
+    const status = String(req.query.status || 'all');
+    const keyword = sanitizeConfigText(req.query.keyword || '', 80);
+    const sortBy = String(req.query.sortBy || 'created_at');
+    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 20));
 
-    if (status && status !== 'all') {
-        sql = "SELECT * FROM orders WHERE status = ? ORDER BY created_at DESC";
-        params = [status];
+    const sortByMap = {
+        created_at: 'created_at',
+        total: 'total',
+        status: 'status',
+        id: 'id'
+    };
+    const orderByField = sortByMap[sortBy] || 'created_at';
+
+    const conditions = [];
+    const params = [];
+    if (status !== 'all') {
+        const numericStatus = Number(status);
+        if (!ORDER_STATUS_VALUES.includes(numericStatus)) {
+            return res.status(400).json({ error: 'status 参数无效' });
+        }
+        conditions.push('status = ?');
+        params.push(numericStatus);
+    }
+    if (keyword) {
+        conditions.push('(id LIKE ? OR contactName LIKE ? OR contactPhone LIKE ?)');
+        params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
 
-    db.all(sql, params, (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        const orders = rows.map(o => ({
-            ...o,
-            items: safeParse(o.items, []),
-            contact: { // 组装回前端习惯的结构
-                name: o.contactName,
-                phone: o.contactPhone,
-                email: o.contactEmail,
-                province: o.province,
-                city: o.city,
-                district: o.district,
-                addressDetail: o.addressDetail
-            }
-        }));
-        res.json(orders);
+    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const offset = (page - 1) * pageSize;
+
+    db.get(`SELECT COUNT(*) AS total FROM orders ${whereSql}`, params, (countErr, countRow) => {
+        if (countErr) return res.status(500).json({ error: countErr.message });
+
+        const total = Number(countRow?.total) || 0;
+        const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
+        const sql = `SELECT * FROM orders ${whereSql} ORDER BY ${orderByField} ${sortDir}, id DESC LIMIT ? OFFSET ?`;
+
+        db.all(sql, [...params, pageSize, offset], (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            const orders = rows.map((o) => ({
+                ...o,
+                items: safeParse(o.items, []),
+                contact: { // 组装回前端习惯的结构
+                    name: o.contactName,
+                    phone: o.contactPhone,
+                    email: o.contactEmail,
+                    province: o.province,
+                    city: o.city,
+                    district: o.district,
+                    addressDetail: o.addressDetail
+                }
+            }));
+            res.json({
+                items: orders,
+                pagination: { page, pageSize, total, totalPages },
+                sort: { by: orderByField, dir: sortDir.toLowerCase() },
+                filters: { status, keyword }
+            });
+        });
     });
 });
 
@@ -1129,6 +1188,22 @@ app.post('/api/orders', async (req, res) => {
             return res.status(400).json({ error: err.message });
         }
         if (err.code === 'SQLITE_CONSTRAINT') {
+            try {
+                const existingOrder = await dbGet(
+                    'SELECT id, total, originalTotal, discountAmount, couponCode FROM orders WHERE id = ?',
+                    [id]
+                );
+                if (existingOrder) {
+                    return res.json({
+                        success: true,
+                        orderId: existingOrder.id,
+                        total: roundMoney(existingOrder.total),
+                        originalTotal: roundMoney(existingOrder.originalTotal),
+                        discountAmount: roundMoney(existingOrder.discountAmount),
+                        couponCode: existingOrder.couponCode || null
+                    });
+                }
+            } catch {}
             return res.status(409).json({ error: '订单号已存在，请重新提交订单' });
         }
 
@@ -1275,6 +1350,62 @@ app.put('/api/orders/:id/status', requireAdminAuth, async (req, res) => {
     } catch (err) {
         if (transactionStarted) {
             try { await dbRun('ROLLBACK'); } catch (rollbackErr) { console.error('Rollback update status failed:', rollbackErr); }
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 5. 删除待确认订单（仅后台：用于清理异常/测试单）
+app.delete('/api/orders/:id', requireAdminAuth, async (req, res) => {
+    const orderId = String(req.params.id || '').trim();
+    let transactionStarted = false;
+
+    if (!orderId) {
+        return res.status(400).json({ error: '订单号不能为空' });
+    }
+
+    try {
+        await dbRun('BEGIN IMMEDIATE TRANSACTION');
+        transactionStarted = true;
+
+        const order = await dbGet('SELECT id, status, items, couponCode FROM orders WHERE id = ?', [orderId]);
+        if (!order) {
+            await dbRun('ROLLBACK');
+            transactionStarted = false;
+            return res.status(404).json({ error: '订单不存在' });
+        }
+
+        if (Number(order.status) !== 5) {
+            await dbRun('ROLLBACK');
+            transactionStarted = false;
+            return res.status(400).json({ error: '仅允许删除待确认订单' });
+        }
+
+        const items = safeParse(order.items, []);
+        for (const item of items) {
+            const productId = Number(item.id);
+            const quantity = Number(item.quantity) || 0;
+            if (Number.isInteger(productId) && quantity > 0) {
+                await dbRun('UPDATE products SET stock = stock + ? WHERE id = ?', [quantity, productId]);
+            }
+        }
+
+        if (order.couponCode) {
+            await dbRun(
+                `UPDATE coupons
+                 SET status = ?, usedOrderId = NULL, used_at = NULL
+                 WHERE code = ? AND usedOrderId = ? AND status = ?`,
+                [COUPON_STATUS.UNUSED, normalizeCouponCode(order.couponCode), orderId, COUPON_STATUS.USED]
+            );
+        }
+
+        await dbRun('DELETE FROM orders WHERE id = ?', [orderId]);
+        await dbRun('COMMIT');
+        transactionStarted = false;
+        res.json({ success: true });
+    } catch (err) {
+        if (transactionStarted) {
+            try { await dbRun('ROLLBACK'); } catch (rollbackErr) { console.error('Rollback delete order failed:', rollbackErr); }
         }
         res.status(500).json({ error: err.message });
     }

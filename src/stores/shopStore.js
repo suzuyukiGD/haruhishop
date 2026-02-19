@@ -20,6 +20,8 @@ const DEFAULT_SITE_CONFIG = Object.freeze({
         friendHelpText: '长按识别二维码添加好友并转账，备注完整订单号。'
     }
 })
+const toCents = (value) => Math.round((Number(value) || 0) * 100)
+const fromCents = (value) => Number((Number(value || 0) / 100).toFixed(2))
 
 const normalizeDiscountPrice = (discountPrice, price) => {
     const basePrice = Number(price)
@@ -71,14 +73,19 @@ const state = reactive({
     currentOrder: null,
     notification: null,
     adminOrders: [], // 确保后台订单列表状态存在
+    adminOrdersMeta: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
     adminCoupons: [],
+    adminCouponsMeta: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
     siteConfig: normalizeSiteConfig()
 })
 
 export const useShopStore = () => {
     // --- 计算属性 ---
     const cartCount = computed(() => state.cart.reduce((acc, item) => acc + item.quantity, 0))
-    const cartTotal = computed(() => Number(state.cart.reduce((acc, item) => acc + item.price * item.quantity, 0).toFixed(2)))
+    const cartTotal = computed(() => {
+        const totalCents = state.cart.reduce((acc, item) => acc + toCents(item.price) * item.quantity, 0)
+        return fromCents(totalCents)
+    })
     
     // 运费计算：按标签分组取最大值后累加
     const shippingFee = computed(() => {
@@ -86,14 +93,15 @@ export const useShopStore = () => {
         const groups = {}
         state.cart.forEach(item => {
             const tag = item.shippingTag || 'default'
-            const cost = item.shippingCost || 0
+            const cost = toCents(item.shippingCost)
             if (groups[tag] === undefined) groups[tag] = cost
             else if (cost > groups[tag]) groups[tag] = cost
         })
-        return Object.values(groups).reduce((sum, val) => sum + val, 0)
+        const totalCents = Object.values(groups).reduce((sum, val) => sum + Number(val || 0), 0)
+        return fromCents(totalCents)
     })
 
-    const finalTotal = computed(() => cartTotal.value + shippingFee.value)
+    const finalTotal = computed(() => fromCents(toCents(cartTotal.value) + toCents(shippingFee.value)))
 
     const setProductType = (type) => { state.currentType = type }
 
@@ -108,7 +116,9 @@ export const useShopStore = () => {
     const handleAdminUnauthorized = () => {
         clearAdminToken()
         state.adminOrders = []
+        state.adminOrdersMeta = { page: 1, pageSize: 20, total: 0, totalPages: 1 }
         state.adminCoupons = []
+        state.adminCouponsMeta = { page: 1, pageSize: 20, total: 0, totalPages: 1 }
         showNotification('登录已失效，请重新登录')
         if (typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')) {
             window.location.href = '/admin/login'
@@ -149,7 +159,9 @@ export const useShopStore = () => {
     const adminLogout = () => {
         clearAdminToken()
         state.adminOrders = []
+        state.adminOrdersMeta = { page: 1, pageSize: 20, total: 0, totalPages: 1 }
         state.adminCoupons = []
+        state.adminCouponsMeta = { page: 1, pageSize: 20, total: 0, totalPages: 1 }
     }
 
     // --- 商品 API ---
@@ -233,6 +245,7 @@ export const useShopStore = () => {
     const fetchAdminCoupons = async (filters = {}) => {
         if (!ensureAdminAuth()) {
             state.adminCoupons = []
+            state.adminCouponsMeta = { page: 1, pageSize: 20, total: 0, totalPages: 1 }
             return []
         }
 
@@ -242,12 +255,16 @@ export const useShopStore = () => {
         }
         if (filters.batchNo) search.set('batchNo', String(filters.batchNo).trim())
         if (filters.keyword) search.set('keyword', String(filters.keyword).trim())
+        if (filters.sortBy) search.set('sortBy', String(filters.sortBy))
+        if (filters.sortDir) search.set('sortDir', String(filters.sortDir))
+        if (filters.page) search.set('page', String(filters.page))
+        if (filters.pageSize) search.set('pageSize', String(filters.pageSize))
 
         const url = `${ADMIN_COUPONS_URL}${search.toString() ? `?${search.toString()}` : ''}`
 
         try {
             const res = await fetch(url, { headers: buildAdminAuthHeaders() })
-            const data = await res.json().catch(() => [])
+            const data = await res.json().catch(() => ({}))
             if (res.status === 401) {
                 handleAdminUnauthorized()
                 return []
@@ -256,7 +273,23 @@ export const useShopStore = () => {
                 showNotification(data.error || '优惠券列表加载失败')
                 return []
             }
-            state.adminCoupons = Array.isArray(data) ? data : []
+            if (Array.isArray(data)) {
+                state.adminCoupons = data
+                state.adminCouponsMeta = {
+                    page: filters.page ? Number(filters.page) : 1,
+                    pageSize: filters.pageSize ? Number(filters.pageSize) : data.length || 20,
+                    total: data.length,
+                    totalPages: 1
+                }
+            } else {
+                state.adminCoupons = Array.isArray(data.items) ? data.items : []
+                state.adminCouponsMeta = data.pagination || {
+                    page: 1,
+                    pageSize: state.adminCoupons.length || 20,
+                    total: state.adminCoupons.length,
+                    totalPages: 1
+                }
+            }
             return state.adminCoupons
         } catch (err) {
             showNotification('优惠券列表加载失败')
@@ -465,13 +498,23 @@ export const useShopStore = () => {
     }
 
     // 后台：获取订单列表
-    const fetchAdminOrders = async (status = 'all') => {
+    const fetchAdminOrders = async (status = 'all', filters = {}) => {
         if (!ensureAdminAuth()) {
             state.adminOrders = []
+            state.adminOrdersMeta = { page: 1, pageSize: 20, total: 0, totalPages: 1 }
             return
         }
+
+        const search = new URLSearchParams()
+        search.set('status', String(status))
+        if (filters.keyword) search.set('keyword', String(filters.keyword).trim())
+        if (filters.sortBy) search.set('sortBy', String(filters.sortBy))
+        if (filters.sortDir) search.set('sortDir', String(filters.sortDir))
+        if (filters.page) search.set('page', String(filters.page))
+        if (filters.pageSize) search.set('pageSize', String(filters.pageSize))
+
         try {
-            const res = await fetch(`${ORDER_URL}?status=${status}`, {
+            const res = await fetch(`${ORDER_URL}?${search.toString()}`, {
                 headers: buildAdminAuthHeaders()
             })
             if (res.status === 401) {
@@ -479,7 +522,27 @@ export const useShopStore = () => {
                 return
             }
             if (res.ok) {
-                state.adminOrders = await res.json()
+                const data = await res.json().catch(() => ({}))
+                if (Array.isArray(data)) {
+                    state.adminOrders = data
+                    state.adminOrdersMeta = {
+                        page: filters.page ? Number(filters.page) : 1,
+                        pageSize: filters.pageSize ? Number(filters.pageSize) : data.length || 20,
+                        total: data.length,
+                        totalPages: 1
+                    }
+                } else {
+                    state.adminOrders = Array.isArray(data.items) ? data.items : []
+                    state.adminOrdersMeta = data.pagination || {
+                        page: 1,
+                        pageSize: state.adminOrders.length || 20,
+                        total: state.adminOrders.length,
+                        totalPages: 1
+                    }
+                }
+            } else {
+                const data = await res.json().catch(() => ({}))
+                showNotification(data.error || '订单列表加载失败')
             }
         } catch (e) { console.error("Fetch orders failed", e) }
     }
@@ -501,7 +564,7 @@ export const useShopStore = () => {
     }
 
     // 后台：更新订单状态
-    const updateOrderStatus = async (id, status, tracking = {}, statusFilter = null) => {
+    const updateOrderStatus = async (id, status, tracking = {}, statusFilter = null, listFilters = null) => {
         if (!ensureAdminAuth()) return false
         try {
             const payload = { status, ...tracking }
@@ -516,7 +579,7 @@ export const useShopStore = () => {
             }
             if (res.ok) {
                 if (statusFilter !== null) {
-                    await fetchAdminOrders(statusFilter) // 仅后台页按当前筛选刷新列表
+                    await fetchAdminOrders(statusFilter, listFilters || {}) // 仅后台页按当前筛选刷新列表
                 }
                 showNotification('订单状态已更新')
                 return true
@@ -531,12 +594,39 @@ export const useShopStore = () => {
         }
     }
 
+    const deleteAdminOrder = async (id, statusFilter = null, listFilters = null) => {
+        if (!ensureAdminAuth()) return false
+        try {
+            const res = await fetch(`${ORDER_URL}/${id}`, {
+                method: 'DELETE',
+                headers: buildAdminAuthHeaders()
+            })
+            const data = await res.json().catch(() => ({}))
+            if (res.status === 401) {
+                handleAdminUnauthorized()
+                return false
+            }
+            if (!res.ok) {
+                showNotification(data.error || '删除订单失败')
+                return false
+            }
+            if (statusFilter !== null) {
+                await fetchAdminOrders(statusFilter, listFilters || {})
+            }
+            showNotification('订单已删除')
+            return true
+        } catch (e) {
+            showNotification('网络错误')
+            return false
+        }
+    }
+
     return {
         state, cartCount, cartTotal, shippingFee, finalTotal,
         setProductType, addToCart, removeFromCart, clearCart, showNotification, setOrder,
         fetchProducts, addProduct, updateProduct, deleteProduct, uploadImage, 
         createOrderBackend, submitOrderPayment,
-        fetchAdminOrders, updateOrderStatus,
+        fetchAdminOrders, updateOrderStatus, deleteAdminOrder,
         previewCoupon, fetchAdminCoupons, createCouponBatch, updateCouponStatus, deleteCoupon,
         fetchSiteConfig, updateSiteConfig,
         resolveProductPrice, hasProductDiscount,
