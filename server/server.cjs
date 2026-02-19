@@ -1167,6 +1167,32 @@ app.get(apiPath('/orders'), requireAdminAuth, (req, res) => {
     });
 });
 
+// 1.1 总览看板聚合数据
+app.get(apiPath('/admin/dashboard-summary'), requireAdminAuth, async (req, res) => {
+    try {
+        const [pendingVerifyRow, pendingShipmentRow, totalSalesRow, totalOrdersRow] = await Promise.all([
+            dbGet('SELECT COUNT(*) AS total FROM orders WHERE status = ?', [5]),
+            dbGet('SELECT COUNT(*) AS total FROM orders WHERE status = ?', [2]),
+            dbGet(
+                `SELECT COALESCE(SUM(total), 0) AS total
+                 FROM orders
+                 WHERE status IN (${SALES_VALID_STATUSES.map(() => '?').join(', ')})`,
+                SALES_VALID_STATUSES
+            ),
+            dbGet('SELECT COUNT(*) AS total FROM orders')
+        ]);
+
+        res.json({
+            pendingVerify: Number(pendingVerifyRow?.total) || 0,
+            pendingShipment: Number(pendingShipmentRow?.total) || 0,
+            totalSales: roundMoney(totalSalesRow?.total),
+            totalOrders: Number(totalOrdersRow?.total) || 0
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // 2. 创建订单 (事务 + 锁库存)
 app.post(apiPath('/orders'), async (req, res) => {
     const { id, items, contact, total, couponCode: rawCouponCode } = req.body || {};
