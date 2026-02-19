@@ -83,6 +83,29 @@ body {
     padding: 1rem; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-md);
 }
 @media (min-width: 768px) { .mini-header-detail { padding: 1rem 5rem; } }
+.mini-header-brand { display: flex; align-items: center; gap: 0.75rem; cursor: pointer; min-width: 0; }
+.mini-header-title {
+    font-weight: bold;
+    font-size: 1.125rem;
+    color: white;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mini-header-actions { display: flex; gap: 1rem; color: white; font-size: 0.875rem; }
+.mini-header-action-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+.mini-header-cart-btn { position: relative; }
+.mini-header-cart-badge { top: -5px; right: -10px; width: 16px; height: 16px; font-size: 10px; }
 .mini-header-detail::before {
     content: ""; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
     background-image: radial-gradient(white 1px, transparent 1px); background-size: 30px 30px; opacity: 0.15; pointer-events: none;
@@ -338,3 +361,107 @@ textarea.input-field { resize: none; height: 6rem; }
 .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #999; }
+
+/* === Mobile Adaptation (≤639px) === */
+@media (max-width: 639px) {
+    /* Prevent horizontal overflow globally */
+    body { letter-spacing: 0.5px; }
+    .shop-app { overflow-x: hidden; }
+
+    /* Header: reduce expanded height on small screens */
+    .header-expanded { min-height: 260px; }
+    .app-header { padding: 1rem 0.85rem; }
+    .top-toolbar { gap: 0.5rem; margin-bottom: 0.75rem; }
+    .top-toolbar .market-btn {
+        flex: 1 1 calc(50% - 0.5rem);
+        min-width: 0;
+        padding: 0.35rem 0.65rem;
+        font-size: 0.9rem;
+    }
+    .brand-area { gap: 0.75rem; margin-bottom: 0.75rem; }
+    .brand-logo { width: 3rem; height: 3rem; }
+    .brand-text h1 { font-size: 1.3rem; letter-spacing: 0.06em; }
+    .slogan { letter-spacing: 0.04em; line-height: 1.5; }
+    .main-content { padding: 1rem 0.75rem; }
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.4rem;
+        margin-bottom: 1.25rem;
+    }
+
+    /* Product grid: tighter gap on mobile */
+    .product-grid { gap: 1rem; }
+    .card-image-wrapper { height: 210px; }
+    .card-title { width: 68%; font-size: 1rem; }
+    .card-body { padding: 0.75rem; }
+
+    /* Detail page */
+    .detail-card { padding: 1rem; }
+    .detail-layout { gap: 1.5rem; }
+    .detail-title { font-size: 1.45rem; }
+    .detail-desc { margin-bottom: 1rem; }
+    .price-box { padding: 0.75rem; flex-wrap: wrap; gap: 0.35rem; }
+    .price-current { font-size: 1.55rem; }
+    .tag-stock { margin-left: 0.35rem; }
+    .action-row { flex-direction: column; }
+
+    /* Tabs: scrollable on mobile */
+    .tabs-header { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab-item { padding: 0.85rem 1rem; white-space: nowrap; flex-shrink: 0; }
+    .tab-content { padding: 1rem; min-height: auto; }
+
+    /* Breadcrumb: prevent overflow */
+    .breadcrumb { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 1rem; }
+
+    /* Cart, Checkout, Payment containers */
+    .payment-container, .query-box, .result-page { margin: 1.25rem auto; padding: 1rem; }
+    .cart-empty { padding: 3rem 1rem; }
+    .cart-empty .cart-icon { font-size: 3rem; }
+    .result-header { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+    .result-body { padding: 1rem; }
+    .contact-info, .contact-form { padding: 1.25rem; }
+
+    /* Mini header (detail page) */
+    .mini-header-detail {
+        padding: 0.75rem 0.9rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.55rem;
+    }
+    .mini-header-actions { width: 100%; gap: 0.5rem; }
+    .mini-header-action-btn {
+        flex: 1;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 999px;
+        min-height: 36px;
+        font-size: 0.8rem;
+    }
+
+    /* Cart footer: stack vertically */
+    .cart-footer { flex-direction: column; gap: 1rem; align-items: stretch; text-align: center; }
+
+    /* Payment page */
+    .order-info-col { border-right: none; padding-right: 0; padding-bottom: 1.5rem; border-bottom: 1px dashed #ddd; }
+    .order-sn { font-size: 0.9rem; word-break: break-all; }
+    .payment-grid { padding: 1rem; gap: 1.5rem; }
+
+    /* Filter buttons: horizontal scroll */
+    .custom-btn-group { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; padding-bottom: 4px; }
+
+    /* Form grid: single column on phone */
+    .form-grid { grid-template-columns: 1fr; }
+    .col-span-2 { grid-column: span 1; }
+
+    /* Touch targets: minimum 44px tap size */
+    .market-btn { min-height: 44px; }
+    .qty-btn { min-width: 44px; min-height: 44px; }
+
+    /* Toast: full-width centered on mobile */
+    .toast { left: 1rem; right: 1rem; transform: none; max-width: none; justify-content: center; }
+
+    /* Quantity control: larger on touch */
+    .quantity-control { border-radius: var(--radius-md); }
+    .qty-input { font-size: 1rem; }
+}

@@ -51,12 +51,24 @@ body {
 /* 主内容 */
 .main-wrapper { flex: 1; display: flex; flex-direction: column; background-color: var(--bg-body); overflow: hidden; }
 .top-header { height: var(--header-height); background: white; box-shadow: var(--shadow-sm); display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; z-index: 10; }
+.header-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
 .page-heading { font-size: 1.125rem; font-weight: bold; color: #374151; margin: 0; }
 .user-profile { display: flex; align-items: center; gap: 1rem; }
 .user-info { font-size: 0.875rem; color: #6b7280; }
 .logout-btn { width: 2rem; height: 2rem; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; color: #4b5563; border: none; cursor: pointer; }
 .logout-btn:hover { background: #d1d5db; }
 .content-scroll { flex: 1; overflow-y: auto; padding: 2rem; }
+.sidebar-toggle {
+    display: none;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 6px;
+    background: #f3f4f6;
+    color: #374151;
+    cursor: pointer;
+}
+.mobile-sidebar-backdrop { display: none; }
 
 /* 组件样式 */
 .stats-grid { display: grid; grid-template-columns: repeat(1, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
@@ -130,3 +142,56 @@ body {
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+@media (max-width: 1023px) {
+    .sidebar-toggle { display: inline-flex; align-items: center; justify-content: center; }
+    .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: min(280px, 84vw);
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        z-index: 40;
+    }
+    .app-container.sidebar-open .sidebar { transform: translateX(0); }
+    .mobile-sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        z-index: 30;
+    }
+    .top-header { padding: 0 1rem; }
+    .page-heading { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .content-scroll { padding: 1rem; }
+    .toolbar { align-items: stretch; gap: 0.75rem; }
+    .filter-group {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        padding-bottom: 2px;
+    }
+    .search-box { width: 100%; }
+    .search-input { width: 100%; max-width: 100%; }
+    .data-table th, .data-table td { padding: 0.75rem 0.625rem; font-size: 0.82rem; }
+    .item-row { max-width: 170px; }
+    .modal-card {
+        width: min(94vw, 24rem);
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+}
+
+@media (max-width: 639px) {
+    .app-container { height: 100dvh; }
+    .top-header { height: 56px; }
+    .user-info { display: none; }
+    .content-scroll { padding: 0.75rem; }
+    .admin-btn { min-height: 40px; }
+    .modal-actions { flex-wrap: wrap; justify-content: stretch; }
+    .modal-actions .admin-btn { flex: 1; }
+}

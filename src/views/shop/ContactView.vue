@@ -52,7 +52,10 @@ const submitMessage = async () => {
         <h3 style="font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem;">联系方式</h3>
         <p style="margin-bottom: 1.5rem; opacity: 0.8; font-size: 0.9rem;">如果您对周边或订单有任何疑问，请留言。</p>
         <ul class="contact-list" style="list-style: none; padding: 0; font-size: 0.875rem; line-height: 2;">
-          <li class="contact-item contact-item-email"><i class="fa fa-envelope mr-2"></i> haruhifanclub@outlook.com</li>
+          <li class="contact-item contact-item-email">
+            <i class="fa fa-envelope mr-2"></i>
+            <span class="contact-email-text">haruhifanclub@outlook.com</span>
+          </li>
           <li class="contact-item"><i class="fa-brands fa-weixin mr-2" style="color: #07c160;"></i> haruhiism15532</li>
         </ul>
       </div>
@@ -100,9 +103,18 @@ const submitMessage = async () => {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .contact-item-email {
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.contact-email-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

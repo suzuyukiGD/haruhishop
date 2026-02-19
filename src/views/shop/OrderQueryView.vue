@@ -1,7 +1,7 @@
 <template>
     <div class="query-box">
-        <h2 style="font-size: 1.5rem; font-weight: bold; text-align: center; color: #1f2937; margin-bottom: 2rem;">订单查询</h2>
-        <div class="flex-row gap-4" style="margin-bottom: 0.75rem;">
+        <h2 class="query-title">订单查询</h2>
+        <div class="query-form-row" style="margin-bottom: 0.75rem;">
             <input v-model="queryId" type="text" placeholder="请输入订单号 (如: SOS...)" class="input-field" style="flex-grow: 1;">
             <input
                 v-model="phoneLast4"
@@ -25,7 +25,7 @@
 
         <div v-else-if="order" class="query-result">
             <div class="result-header">
-                <span style="font-weight: bold; color: #374151;">订单: {{ order.id }}</span>
+                <span class="result-order-id">订单: {{ order.id }}</span>
                 <span :style="statusStyle">{{ statusText }}</span>
             </div>
             <div class="result-body">
@@ -48,11 +48,11 @@
                     </div>
 
                     <!-- 商品明细 -->
-                    <div v-for="item in order.items" :key="item.id" style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6;">
-                        <span style="color: #374151;">{{ item.name }} x{{ item.quantity }}</span>
+                    <div v-for="item in order.items" :key="item.id" class="query-item-row">
+                        <span class="query-item-name">{{ item.name }} x{{ item.quantity }}</span>
                         <span style="color: #6b7280;">&yen;{{ item.price * item.quantity }}</span>
                     </div>
-                    <div style="display: flex; justify-content: space-between; padding: 0.75rem 0; font-weight: bold;">
+                    <div class="query-total-row">
                         <span>合计（含运费）</span>
                         <span style="color: #dc2626;">&yen;{{ order.total }}</span>
                     </div>
@@ -145,3 +145,74 @@ const query = async () => {
     }
 }
 </script>
+
+<style scoped>
+.query-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-align: center;
+    color: #1f2937;
+    margin-bottom: 2rem;
+}
+
+.query-form-row {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+}
+
+.result-order-id {
+    font-weight: bold;
+    color: #374151;
+}
+
+.query-item-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.query-item-name {
+    color: #374151;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 72%;
+}
+
+.query-total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    font-weight: bold;
+}
+
+@media (max-width: 639px) {
+    .query-title {
+        margin-bottom: 1.25rem;
+        font-size: 1.25rem;
+    }
+    .query-form-row {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .query-form-row .input-field {
+        width: 100% !important;
+    }
+    .query-form-row .market-btn {
+        width: 100%;
+        padding: 0.625rem !important;
+    }
+    .query-item-row {
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+    .query-item-name {
+        max-width: 100%;
+        white-space: normal;
+        word-break: break-word;
+    }
+}
+</style>

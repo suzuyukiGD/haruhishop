@@ -120,6 +120,30 @@ db.serialize(() => {
     db.run(`CREATE INDEX IF NOT EXISTS idx_contact_messages_status_time
             ON contact_messages(status, created_at)`);
 
+    db.run(`CREATE TABLE IF NOT EXISTS email_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        toEmail TEXT NOT NULL,
+        eventKey TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        html TEXT NOT NULL,
+        text TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        maxAttempts INTEGER NOT NULL DEFAULT 5,
+        nextRunAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        lastError TEXT,
+        sentAt DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    db.run(`CREATE INDEX IF NOT EXISTS idx_email_jobs_status_next
+            ON email_jobs(status, nextRunAt)`);
+
+    db.run(`CREATE INDEX IF NOT EXISTS idx_email_jobs_order_event_time
+            ON email_jobs(orderId, eventKey, created_at)`);
+
     ensureColumn('products', 'discountPrice', 'INTEGER');
     ensureColumn('orders', 'originalTotal', 'REAL DEFAULT 0');
     ensureColumn('orders', 'discountAmount', 'REAL DEFAULT 0');

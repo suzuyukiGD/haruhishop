@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db.cjs');
+const { createEmailService } = require('./email.cjs');
 
 const loadEnvFile = (filePath) => {
     if (!fs.existsSync(filePath)) return;
@@ -121,6 +122,21 @@ const COUPON_STATUS = Object.freeze({
     USED: 2
 });
 const COUPON_DISCOUNT_TYPES = ['amount', 'percent'];
+const EMAIL_NOTIFICATIONS_ENABLED = String(process.env.EMAIL_NOTIFICATIONS_ENABLED || 'false');
+const SMTP_HOST = process.env.SMTP_HOST || '';
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || 'true');
+const SMTP_USER = process.env.SMTP_USER || '';
+const SMTP_PASS = process.env.SMTP_PASS || '';
+const MAIL_FROM_NAME = process.env.MAIL_FROM_NAME || '春日商城';
+const MAIL_FROM_ADDRESS = process.env.MAIL_FROM_ADDRESS || '';
+const MAIL_REPLY_TO = process.env.MAIL_REPLY_TO || '';
+const MAIL_MAX_ATTEMPTS = Number(process.env.MAIL_MAX_ATTEMPTS || 5);
+const MAIL_RETRY_BACKOFFS_MINUTES = process.env.MAIL_RETRY_BACKOFFS_MINUTES || '1,5,15,60,180';
+const MAIL_WORKER_INTERVAL_MS = Number(process.env.MAIL_WORKER_INTERVAL_MS || 10000);
+const MAIL_WORKER_BATCH_SIZE = Number(process.env.MAIL_WORKER_BATCH_SIZE || 20);
+const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || '';
+const MAIL_ORDER_QUERY_URL = process.env.MAIL_ORDER_QUERY_URL || '';
 
 const dbAll = (sql, params = []) =>
     new Promise((resolve, reject) => db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows))));
@@ -135,6 +151,64 @@ const dbRun = (sql, params = []) =>
             else resolve(this);
         });
     });
+
+const mapOrderRow = (row) => {
+    if (!row) return null;
+    return {
+        ...row,
+        total: Number(row.total) || 0,
+        originalTotal: Number(row.originalTotal) || 0,
+        discountAmount: Number(row.discountAmount) || 0,
+        status: Number(row.status),
+        items: safeParse(row.items, []),
+        contact: {
+            name: row.contactName,
+            phone: row.contactPhone,
+            email: row.contactEmail,
+            province: row.province,
+            city: row.city,
+            district: row.district,
+            addressDetail: row.addressDetail
+        }
+    };
+};
+
+const getOrderDetailById = async (orderId) => {
+    const row = await dbGet('SELECT * FROM orders WHERE id = ?', [orderId]);
+    return mapOrderRow(row);
+};
+
+const emailService = createEmailService({
+    dbAll,
+    dbRun,
+    logger: console,
+    enabled: EMAIL_NOTIFICATIONS_ENABLED,
+    smtpHost: SMTP_HOST,
+    smtpPort: SMTP_PORT,
+    smtpSecure: SMTP_SECURE,
+    smtpUser: SMTP_USER,
+    smtpPass: SMTP_PASS,
+    mailFromName: MAIL_FROM_NAME,
+    mailFromAddress: MAIL_FROM_ADDRESS,
+    mailReplyTo: MAIL_REPLY_TO,
+    maxAttempts: MAIL_MAX_ATTEMPTS,
+    retryBackoffs: MAIL_RETRY_BACKOFFS_MINUTES,
+    workerIntervalMs: MAIL_WORKER_INTERVAL_MS,
+    workerBatchSize: MAIL_WORKER_BATCH_SIZE,
+    publicSiteUrl: PUBLIC_SITE_URL,
+    orderQueryUrl: MAIL_ORDER_QUERY_URL,
+    basePath: process.env.VITE_BASE_PATH || '/shop/'
+});
+
+const enqueueOrderEmailSafely = async (eventKey, orderId) => {
+    try {
+        const order = await getOrderDetailById(orderId);
+        if (!order) return;
+        await emailService.enqueueOrderEmail(eventKey, order);
+    } catch (err) {
+        console.error(`[Mail] enqueue failed for event=${eventKey} order=${orderId}:`, err.message || err);
+    }
+};
 
 const createBadRequestError = (message) => {
     const error = new Error(message);
@@ -1318,6 +1392,7 @@ app.post(apiPath('/orders'), async (req, res) => {
 
         await dbRun('COMMIT');
         transactionStarted = false;
+        enqueueOrderEmailSafely('order_created', id);
 
         res.json({
             success: true,
@@ -1427,6 +1502,7 @@ app.post(apiPath('/orders/:id/payment'), async (req, res) => {
         await dbRun("UPDATE orders SET status = 5 WHERE id = ?", [orderId]);
         await dbRun('COMMIT');
         transactionStarted = false;
+        enqueueOrderEmailSafely('payment_submitted', orderId);
         res.json({ success: true, status: 5 });
     } catch (err) {
         if (transactionStarted) {
@@ -1442,6 +1518,7 @@ app.put(apiPath('/orders/:id/status'), requireAdminAuth, async (req, res) => {
     const { trackingCompany, trackingNo } = req.body || {};
     const newStatus = Number(req.body?.status);
     let transactionStarted = false;
+    let notifyEventKey = '';
 
     if (!Number.isInteger(newStatus) || !ORDER_STATUS_VALUES.includes(newStatus)) {
         return res.status(400).json({ error: '订单状态值无效' });
@@ -1466,6 +1543,12 @@ app.put(apiPath('/orders/:id/status'), requireAdminAuth, async (req, res) => {
             return res.status(400).json({
                 error: `非法状态流转: ${oldStatus} -> ${newStatus}`
             });
+        }
+
+        if (newStatus !== oldStatus) {
+            if (newStatus === 0) notifyEventKey = 'order_cancelled';
+            if (newStatus === 3) notifyEventKey = 'order_shipped';
+            if (newStatus === 4) notifyEventKey = 'order_completed';
         }
 
         if (newStatus === 0 && CANCELLABLE_STATUSES.includes(oldStatus)) {
@@ -1493,6 +1576,7 @@ app.put(apiPath('/orders/:id/status'), requireAdminAuth, async (req, res) => {
         await dbRun(sql, params);
         await dbRun('COMMIT');
         transactionStarted = false;
+        if (notifyEventKey) enqueueOrderEmailSafely(notifyEventKey, orderId);
 
         res.json({ success: true, status: newStatus });
     } catch (err) {
@@ -1810,4 +1894,5 @@ app.get(apiPath('/admin/stats/conversion'), requireAdminAuth, async (req, res) =
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT} (API prefix: ${API_PREFIX})`);
+    emailService.startWorker();
 });

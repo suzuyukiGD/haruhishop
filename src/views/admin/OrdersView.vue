@@ -368,4 +368,45 @@ button:disabled {
   color: #ef4444;
   border-color: #fca5a5;
 }
+
+@media (max-width: 1023px) {
+  .toolbar-query,
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .toolbar-query .search-input {
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .pagination-row {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 639px) {
+  .toolbar-query {
+    gap: 0.4rem;
+  }
+
+  .compact-select {
+    width: calc(33.333% - 0.3rem);
+    min-width: 0;
+  }
+
+  .toolbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .toolbar-actions .admin-btn {
+    flex: 1;
+  }
+
+  .checkbox-cell {
+    width: 2.25rem;
+  }
+}
 </style>

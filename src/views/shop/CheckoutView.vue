@@ -59,7 +59,7 @@
             <h3 style="font-weight: bold; color: #374151; margin: 0 0 1rem 0;">订单概览</h3>
             <div class="order-item-list custom-scrollbar">
                 <div v-for="item in cart" :key="item.id" class="summary-row">
-                    <span style="width: 66%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ item.name }} x{{ item.quantity }}</span>
+                    <span class="summary-item-name">{{ item.name }} x{{ item.quantity }}</span>
                     <span style="color: #1f2937;">¥{{ item.price * item.quantity }}</span>
                 </div>
             </div>
@@ -71,17 +71,15 @@
             </div>
             <div style="margin: 0.75rem 0; padding: 0.75rem; background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px;">
                 <div style="font-size: 0.85rem; color: #4b5563; margin-bottom: 0.5rem;">优惠券</div>
-                <div style="display: flex; gap: 0.5rem;">
+                <div class="coupon-row">
                     <input
                         v-model.trim="couponCode"
-                        class="input-field"
-                        style="margin: 0; height: 2.25rem; flex: 1;"
+                        class="input-field coupon-input"
                         maxlength="40"
                         placeholder="输入优惠券码"
                     >
                     <button
-                        class="market-btn primary-action"
-                        style="white-space: nowrap; height: 2.25rem;"
+                        class="market-btn primary-action coupon-btn"
                         :disabled="isApplyingCoupon || !couponCode"
                         @click="applyCoupon"
                     >
@@ -89,8 +87,7 @@
                     </button>
                     <button
                         v-if="appliedCoupon"
-                        class="market-btn btn-ghost"
-                        style="white-space: nowrap; height: 2.25rem;"
+                        class="market-btn btn-ghost coupon-btn"
                         @click="clearCoupon"
                     >
                         清除
@@ -269,4 +266,24 @@ textarea.input-field { resize: none; height: 6rem; }
 .total-row { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #eee; padding-top: 1rem; margin-top: 1rem; }
 .total-price { font-size: 1.5rem; font-weight: bold; color: var(--primary-color); }
 .market-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.summary-item-name {
+    width: 66%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.coupon-row { display: flex; gap: 0.5rem; }
+.coupon-input { margin: 0; height: 2.25rem; flex: 1; }
+.coupon-btn { white-space: nowrap; height: 2.25rem; }
+
+@media (max-width: 639px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .col-span-2 { grid-column: span 1; }
+    .select-field { max-width: none; }
+    .flex-row.gap-2 { flex-direction: column; }
+    .summary-item-name { width: 58%; }
+    .coupon-row { flex-wrap: wrap; }
+    .coupon-input { flex-basis: 100%; }
+    .coupon-btn { flex: 1; min-width: 108px; }
+}
 </style>

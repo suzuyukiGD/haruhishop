@@ -464,4 +464,33 @@ onBeforeUnmount(() => {
     background: #f9fafb;
     border-radius: 8px;
 }
+
+@media (max-width: 1023px) {
+    .chart-wrap {
+        height: 300px;
+    }
+}
+
+@media (max-width: 639px) {
+    .chart-wrap {
+        height: 240px;
+    }
+
+    .date-picker-group {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 0.4rem;
+    }
+
+    .date-input {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .date-picker-group .admin-btn {
+        width: 100%;
+        margin-top: 0.2rem;
+    }
+}
 </style>

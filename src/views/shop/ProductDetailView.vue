@@ -36,7 +36,7 @@
                     </div>
                 </div>
                 <div>
-                    <div class="flex-row items-center gap-4" style="margin-bottom: 1.5rem;">
+                    <div class="flex-row items-center gap-4 detail-qty-row" style="margin-bottom: 1.5rem;">
                         <span style="font-size: 0.875rem; color: #666;">数量</span>
                         <div class="quantity-control">
                             <button @click="quantity > 1 ? quantity-- : null" class="qty-btn">-</button>
@@ -111,3 +111,13 @@ const buyNow = () => {
     router.push('/cart')
 }
 </script>
+
+<style scoped>
+@media (max-width: 639px) {
+    .detail-qty-row {
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: center;
+    }
+}
+</style>

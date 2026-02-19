@@ -462,4 +462,28 @@ const scrollToTop = () => {
   border-color: #ccc;
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
+
+@media (max-width: 639px) {
+  .footer-inner {
+    padding: 0 16px;
+  }
+  .footer-grid {
+    padding: 40px 0 32px;
+    gap: 32px;
+  }
+  .nav-group.wide-group {
+    min-width: 0;
+  }
+  .nav-cols-wrapper {
+    gap: 28px;
+  }
+  .elevator-btn {
+    right: 16px;
+    width: 40px;
+    height: 40px;
+  }
+  .social-row {
+    flex-wrap: wrap;
+  }
+}
 </style>

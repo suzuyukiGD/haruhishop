@@ -8,12 +8,12 @@
     <div class="payment-grid">
         <div class="order-info-col">
             <label style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 0.25rem;">订单编号</label>
-            <div class="flex-row items-center gap-2" style="margin-bottom: 1.5rem;">
+            <div class="flex-row items-center gap-2 order-sn-row" style="margin-bottom: 1.5rem;">
                 <span class="order-sn">{{ order.id }}</span>
                 <button @click="copy(order.id)" style="font-size: 0.75rem; background: #dbeafe; color: #2563eb; border: none; padding: 2px 6px; border-radius: 4px; cursor: pointer;">复制</button>
             </div>
             <label style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 0.25rem;">应付金额</label>
-            <div style="font-size: 1.875rem; font-weight: bold; color: #1f2937; margin-bottom: 0.5rem;">¥{{ order.total }}</div>
+            <div class="payment-amount">¥{{ order.total }}</div>
             <div v-if="Number(order.discountAmount) > 0" style="font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem;">
                 原价 ¥{{ order.originalTotal }}，优惠 -¥{{ order.discountAmount }}
             </div>
@@ -21,12 +21,14 @@
         </div>
         <div class="qr-col">
             <!-- 支付方式切换 -->
-            <div style="display: flex; gap: 0; margin-bottom: 1rem; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+            <div class="pay-method-switch">
                 <button @click="payMethod = 'wechat'"
+                    class="pay-method-btn"
                     :style="payMethod === 'wechat' ? 'background: #07c160; color: #fff; border: none; padding: 0.5rem 1.25rem; cursor: pointer; flex: 1; font-size: 0.875rem; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 0.35rem; white-space: nowrap;' : 'background: #fff; color: #374151; border: none; padding: 0.5rem 1.25rem; cursor: pointer; flex: 1; font-size: 0.875rem; display: flex; align-items: center; justify-content: center; gap: 0.35rem; white-space: nowrap;'">
                     <i class="fab fa-weixin"></i> 微信
                 </button>
                 <button @click="payMethod = 'alipay'"
+                    class="pay-method-btn"
                     :style="payMethod === 'alipay' ? 'background: #1677ff; color: #fff; border: none; padding: 0.5rem 1.25rem; cursor: pointer; flex: 1; font-size: 0.875rem; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 0.35rem; white-space: nowrap;' : 'background: #fff; color: #374151; border: none; padding: 0.5rem 1.25rem; cursor: pointer; flex: 1; font-size: 0.875rem; display: flex; align-items: center; justify-content: center; gap: 0.35rem; white-space: nowrap;'">
                     <i class="fab fa-alipay"></i> 支付宝
                 </button>
@@ -58,20 +60,20 @@
 
     <p style="font-size: 0.75rem; color: #9ca3af; margin: 0 0 1.5rem 0; text-align: center;">管理员核对账单将有一定延迟，如果订单长期未确认，请联系我们。</p>
 
-    <div class="flex-row gap-4" style="justify-content: center;">
-        <button class="market-btn btn-ghost" style="padding: 0.5rem 1.5rem;" @click="helpModal = true">
+    <div class="flex-row gap-4 payment-actions" style="justify-content: center;">
+        <button class="market-btn btn-ghost payment-action-btn" style="padding: 0.5rem 1.5rem;" @click="helpModal = true">
             <i class="fa fa-question-circle"></i> 无法付款
         </button>
-        <button class="market-btn btn-green" style="padding: 0.5rem 2rem;" @click="confirmPay">
+        <button class="market-btn btn-green payment-action-btn" style="padding: 0.5rem 2rem;" @click="confirmPay">
             <i class="fa fa-check mr-2"></i> 我已完成支付
         </button>
     </div>
 
     <!-- 无法付款弹窗 -->
     <div v-if="helpModal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100;" @click.self="helpModal = false">
-        <div style="background: #fff; border-radius: 12px; padding: 2rem; max-width: 320px; width: 90%; text-align: center;">
+        <div class="help-modal-card">
             <h3 style="font-size: 1.125rem; font-weight: bold; color: #1f2937; margin: 0 0 0.75rem 0;">添加好友转账</h3>
-            <div style="width: 180px; height: 180px; margin: 0 auto 1rem; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+            <div class="help-modal-qr-box">
                 <img
                     v-if="paymentConfig.friendQr"
                     :src="paymentConfig.friendQr"
@@ -175,6 +177,50 @@ const confirmPay = async () => {
     border-radius: 6px;
 }
 
+.order-sn-row {
+    flex-wrap: wrap;
+}
+
+.payment-amount {
+    font-size: 1.875rem;
+    font-weight: bold;
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+}
+
+.pay-method-switch {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+}
+
+.payment-actions {
+    justify-content: center;
+}
+
+.help-modal-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 320px;
+    width: 90%;
+    text-align: center;
+}
+
+.help-modal-qr-box {
+    width: 180px;
+    height: 180px;
+    margin: 0 auto 1rem;
+    background: #f3f4f6;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .clickable-qr {
     cursor: zoom-in;
 }
@@ -232,5 +278,40 @@ const confirmPay = async () => {
     margin-top: 0.6rem;
     font-size: 0.8rem;
     color: #6b7280;
+}
+
+@media (max-width: 639px) {
+    .pay-method-btn {
+        padding: 0.5rem 0.35rem !important;
+        font-size: 0.8rem !important;
+    }
+    .payment-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.7rem;
+    }
+    .payment-action-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    .help-modal-card {
+        padding: 1.25rem;
+        max-width: 94vw;
+    }
+    .help-modal-qr-box {
+        width: min(64vw, 180px);
+        height: min(64vw, 180px);
+    }
+    .order-sn-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+    .pay-method-switch {
+        width: 100%;
+    }
+    .payment-amount {
+        font-size: 1.5rem;
+    }
 }
 </style>

@@ -2,7 +2,7 @@
   <div class="panel">
     <div class="toolbar">
       <h3 style="font-weight: bold; color: #374151; margin: 0;">优惠券管理</h3>
-      <div style="display: flex; gap: 0.5rem;">
+      <div class="toolbar-top-actions">
         <button class="admin-btn btn-outline" @click="loadCoupons">刷新</button>
         <button class="admin-btn btn-green" :disabled="selectedCount === 0" @click="exportSelectedCodes">导出所选券码</button>
       </div>
@@ -388,6 +388,11 @@ onMounted(loadCoupons)
   color: #374151;
 }
 
+.toolbar-top-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .create-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -427,6 +432,11 @@ onMounted(loadCoupons)
   margin-bottom: 0.75rem;
 }
 
+.filter-row .form-select,
+.filter-row .form-input {
+  margin-bottom: 0;
+}
+
 .pagination-row {
   justify-content: flex-end;
   gap: 0.5rem;
@@ -440,5 +450,43 @@ onMounted(loadCoupons)
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+@media (max-width: 1023px) {
+  .toolbar-top-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .pagination-row {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 639px) {
+  .toolbar-top-actions .admin-btn {
+    flex: 1;
+  }
+
+  .filter-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-row .form-select,
+  .filter-row .form-input,
+  .filter-row .admin-btn {
+    width: 100% !important;
+  }
+
+  .filter-row .admin-btn {
+    grid-column: 1 / -1;
+  }
+
+  .latest-codes > div {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
 }
 </style>

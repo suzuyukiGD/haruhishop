@@ -199,4 +199,32 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+@media (max-width: 1023px) {
+  .toolbar-query {
+    width: 100%;
+  }
+
+  .toolbar-query .search-input {
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .pagination-row {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 639px) {
+  .toolbar-query {
+    gap: 0.4rem;
+  }
+
+  .compact-select {
+    width: calc(33.333% - 0.3rem);
+    min-width: 0;
+  }
+}
 </style>

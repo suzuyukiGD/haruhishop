@@ -72,17 +72,17 @@
 
     <!-- Header: 迷你版 (详情页) -->
     <header v-else class="mini-header-detail">
-        <div class="items-center flex-row" style="display:flex; gap: 0.75rem; cursor: pointer;" @click="$router.push('/')">
+        <div class="mini-header-brand" @click="$router.push('/')">
             <div class="brand-logo mini-brand-logo">
                 <img :src="miniLogoUrl" alt="春日商城 Mini Logo" class="brand-logo-img">
             </div>
-            <span style="font-weight: bold; font-size: 1.125rem; color: white; letter-spacing: 0.1em;">春日商城</span>
+            <span class="mini-header-title">春日商城</span>
         </div>
-        <div style="display: flex; gap: 1rem; color: white; font-size: 0.875rem;">
-            <button style="background:none; border:none; color:white; cursor:pointer;" @click="$router.push('/contact')"><i class="fa fa-user"></i> 个人中心</button>
-            <button style="background:none; border:none; color:white; cursor:pointer; position:relative;" @click="$router.push('/cart')">
+        <div class="mini-header-actions">
+            <button class="mini-header-action-btn" @click="$router.push('/contact')"><i class="fa fa-user"></i> 联系我们</button>
+            <button class="mini-header-action-btn mini-header-cart-btn" @click="$router.push('/cart')">
                 <i class="fa fa-shopping-cart"></i> 购物车
-                <span v-if="cartCount > 0" class="badge-count" style="top: -5px; right: -10px; width: 16px; height: 16px; font-size: 10px;">{{ cartCount }}</span>
+                <span v-if="cartCount > 0" class="badge-count mini-header-cart-badge">{{ cartCount }}</span>
             </button>
         </div>
     </header>
@@ -144,3 +144,9 @@ const pageTitle = computed(() => {
     return map[route.name] || ''
 })
 </script>
+
+<style scoped>
+@media (max-width: 639px) {
+    .filter-controls { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+</style>

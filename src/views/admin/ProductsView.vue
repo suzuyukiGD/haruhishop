@@ -35,9 +35,9 @@
 
     <!-- 编辑/新增 弹窗 (大) -->
     <div v-if="showModal" class="modal-overlay">
-        <div class="modal-card" style="width: 800px; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-card product-modal-card">
             <h3 class="modal-title">{{ isEdit ? '编辑商品' : '新增商品' }}</h3>
-            <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+            <div class="form-grid product-form-grid">
                 
                 <!-- 第一行：基础信息 -->
                 <div><label class="form-label">名称</label><input v-model="form.name" class="form-input"></div>
@@ -61,22 +61,22 @@
                 <div><label class="form-label">单品运费 (¥)</label><input v-model.number="form.shippingCost" class="form-input" type="number"></div>
 
                 <!-- 第四行：主图上传 -->
-                <div style="grid-column: span 3;">
+                <div class="full-span">
                     <label class="form-label">商品主图</label>
-                    <div style="display: flex; gap: 1rem; align-items: center;">
+                    <div class="main-image-row">
                         <img v-if="form.image" :src="form.image" style="width: 60px; height: 60px; object-fit: cover; border: 1px solid #ddd; border-radius: 4px;">
                         <input type="file" @change="e => handleUpload(e, 'image')" accept="image/*">
                     </div>
                 </div>
 
                 <!-- 第五行：描述 -->
-                <div style="grid-column: span 3;">
+                <div class="full-span">
                     <label class="form-label">短描述 (列表页显示)</label>
                     <input v-model="form.desc" class="form-input">
                 </div>
 
                 <!-- 第六行：参数表 (Key-Value 编辑) -->
-                <div style="grid-column: span 3; background: #f9fafb; padding: 1rem; border-radius: 8px;">
+                <div class="full-span" style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
                     <label class="form-label" style="font-weight: bold;">规格参数表</label>
                     <div v-for="(spec, idx) in form.specs" :key="idx" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
                         <input v-model="spec.key" placeholder="参数名" class="form-input" style="flex:1; margin:0;">
@@ -87,13 +87,13 @@
                 </div>
 
                 <!-- 第七行：详情页文案 -->
-                <div style="grid-column: span 3;">
+                <div class="full-span">
                     <label class="form-label">详情页长文案</label>
                     <textarea v-model="form.detailText" class="form-input" style="height: 100px;"></textarea>
                 </div>
 
                 <!-- 第八行：详情多图上传 -->
-                <div style="grid-column: span 3;">
+                <div class="full-span">
                     <label class="form-label">详情页图片组</label>
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
                         <div v-for="(img, idx) in form.detailImages" :key="idx" style="position: relative;">
@@ -210,4 +210,39 @@ const save = async () => {
 
 <style scoped>
 .form-grid { display: grid; }
+.product-modal-card {
+    width: min(960px, 94vw);
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.product-form-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+.full-span {
+    grid-column: 1 / -1;
+}
+.main-image-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+@media (max-width: 1023px) {
+    .product-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 639px) {
+    .product-form-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    .main-image-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}
 </style>
