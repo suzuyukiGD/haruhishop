@@ -1384,7 +1384,7 @@ app.put(apiPath('/admin/contact-messages/:id/status'), requireAdminAuth, async (
 
 // --- 商品相关接口 (保持不变) ---
 app.get(apiPath('/products'), (req, res) => {
-    db.all("SELECT * FROM products", [], (err, rows) => {
+    db.all("SELECT * FROM products ORDER BY sortOrder ASC, id ASC", [], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         const products = rows.map(p => ({
             ...p,
@@ -1482,6 +1482,21 @@ app.post(apiPath('/products'), requireAdminAuth, (req, res) => {
     db.run(sql, params, function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ id: this.lastID, ...req.body });
+    });
+});
+
+app.put(apiPath('/products/reorder'), requireAdminAuth, (req, res) => {
+    const { order } = req.body; // [{ id, sortOrder }, ...]
+    if (!Array.isArray(order)) return res.status(400).json({ error: '参数错误' });
+    const stmt = db.prepare('UPDATE products SET sortOrder = ? WHERE id = ?');
+    db.serialize(() => {
+        for (const item of order) {
+            stmt.run(Number(item.sortOrder), Number(item.id));
+        }
+        stmt.finalize((err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'OK' });
+        });
     });
 });
 

@@ -619,6 +619,21 @@ export const useShopStore = () => {
         } catch(e) { showNotification('删除失败'); }
     }
 
+    const reorderProducts = async (order) => {
+        if (!ensureAdminAuth()) return false
+        try {
+            const res = await fetch(`${API_URL}/reorder`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...buildAdminAuthHeaders() },
+                body: JSON.stringify({ order })
+            })
+            if (res.status === 401) { handleAdminUnauthorized(); return false }
+            if (!res.ok) return false
+            await fetchProducts()
+            return true
+        } catch (e) { return false }
+    }
+
     // --- 购物车逻辑 ---
     const addToCart = (product, qty = 1) => {
         const count = Number(qty)
@@ -824,7 +839,7 @@ export const useShopStore = () => {
         state, cartCount, cartTotal, shippingFee, finalTotal,
         freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
         setProductType, addToCart, removeFromCart, clearCart, showNotification, setOrder,
-        fetchProducts, addProduct, updateProduct, deleteProduct, uploadImage, 
+        fetchProducts, addProduct, updateProduct, deleteProduct, reorderProducts, uploadImage,
         createOrderBackend, submitOrderPayment,
         fetchAdminOrders, updateOrderStatus, updateAdminOrderContact, deleteAdminOrder,
         previewCoupon, fetchAdminCoupons, createCouponBatch, updateCouponStatus, deleteCoupon,

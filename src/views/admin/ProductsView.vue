@@ -9,10 +9,17 @@
     <div class="table-container">
         <table class="data-table">
             <thead>
-                <tr><th>ID</th><th>图片</th><th>名称</th><th>分类</th><th>价格</th><th>库存</th><th>发货组</th><th>运费</th><th>操作</th></tr>
+                <tr><th style="width:2rem"></th><th>ID</th><th>图片</th><th>名称</th><th>分类</th><th>价格</th><th>库存</th><th>发货组</th><th>运费</th><th>操作</th></tr>
             </thead>
             <tbody>
-                <tr v-for="p in products" :key="p.id">
+                <tr
+                    v-for="(p, idx) in products" :key="p.id"
+                    :class="{ 'row-drag-over': rowDragOverIdx === idx }"
+                    @dragover.prevent="rowDragOverIdx = idx"
+                    @dragleave="rowDragOverIdx = -1"
+                    @drop.prevent="onRowDrop(idx)"
+                >
+                    <td class="drag-handle" draggable="true" @dragstart="onRowDragStart(idx, $event)" @dragend="onRowDragEnd"><i class="fa fa-grip-vertical"></i></td>
                     <td class="text-sub">#{{ p.id }}</td>
                     <td><img :src="p.image" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;"></td>
                     <td style="font-weight: 500;">{{ p.name }}</td>
@@ -318,6 +325,33 @@ const closeCropModal = () => {
     }
 }
 
+// --- 商品行拖拽排序 ---
+const rowDragFromIdx = ref(-1)
+const rowDragOverIdx = ref(-1)
+
+const onRowDragStart = (idx, e) => {
+    rowDragFromIdx.value = idx
+    e.dataTransfer.effectAllowed = 'move'
+}
+const onRowDragEnd = () => {
+    rowDragFromIdx.value = -1
+    rowDragOverIdx.value = -1
+}
+const onRowDrop = async (toIdx) => {
+    const fromIdx = rowDragFromIdx.value
+    rowDragFromIdx.value = -1
+    rowDragOverIdx.value = -1
+    if (fromIdx === -1 || fromIdx === toIdx) return
+    const list = [...store.state.products]
+    const [moved] = list.splice(fromIdx, 1)
+    list.splice(toIdx, 0, moved)
+    // 乐观更新 UI
+    store.state.products = list
+    // 持久化
+    const order = list.map((p, i) => ({ id: p.id, sortOrder: i }))
+    await store.reorderProducts(order)
+}
+
 // --- 详情图拖拽排序 ---
 const dragFromIdx = ref(-1)
 const dragOverIdx = ref(-1)
@@ -401,6 +435,18 @@ const save = async () => {
     display: flex;
     gap: 1rem;
     align-items: center;
+}
+
+/* 商品行拖拽 */
+.drag-handle {
+    cursor: grab;
+    color: #aaa;
+    text-align: center;
+    user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+.row-drag-over td {
+    background-color: #eff6ff;
 }
 
 .thumb-group {

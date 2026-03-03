@@ -152,6 +152,7 @@ db.serialize(() => {
     ensureColumn('orders', 'mergeMeta', 'TEXT');
     ensureColumn('contact_messages', 'handled_at', 'DATETIME');
     ensureColumn('products', 'imageMobile', 'TEXT');
+    ensureColumn('products', 'sortOrder', 'INTEGER DEFAULT 0');
 });
 
 module.exports = db;
