@@ -125,7 +125,7 @@
     <div v-if="showCropModal" class="modal-overlay" style="z-index: 1100;">
         <div class="modal-card crop-modal-card">
             <h3 class="modal-title">
-                {{ cropStep === 1 ? '步骤 1/2：裁切桌面端头图 (4:3)' : '步骤 2/2：裁切移动端头图 (3:4)' }}
+                {{ cropStep === 1 ? '步骤 1/2：裁切桌面端头图 (6:5)' : '步骤 2/2：裁切移动端头图 (1:1.12)' }}
             </h3>
             <div class="crop-container">
                 <img ref="cropImageEl" :src="cropImageSrc">
@@ -252,7 +252,7 @@ const handleUpload = async (e, type) => {
         cropImageSrc.value = ev.target.result
         cropStep.value = 1
         showCropModal.value = true
-        nextTick(() => initCropper(4 / 3))
+        nextTick(() => initCropper(6 / 5))
     }
     reader.readAsDataURL(file)
     pendingFileInput = e.target
@@ -273,7 +273,7 @@ const confirmCrop = async () => {
             cropStep.value = 2
             destroyCropper()
             await nextTick()
-            initCropper(3 / 4)
+            initCropper(1 / 1.12)
         } else {
             // 移动端裁切完成 → 上传 → 关闭弹窗
             const url = await uploadBlob(blob, 'mobile')
@@ -383,11 +383,11 @@ const save = async () => {
     border-radius: 4px;
 }
 .thumb-desktop {
-    width: 80px;
+    width: 72px;
     height: 60px;
 }
 .thumb-mobile {
-    width: 45px;
+    width: 54px;
     height: 60px;
 }
 .thumb-label {
