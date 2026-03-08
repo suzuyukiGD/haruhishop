@@ -30,7 +30,38 @@
                         <span style="font-size: 0.875rem; color: var(--primary-color);">应援价</span>
                         <span class="price-current">¥{{ getDisplayPrice(product) }}</span>
                         <span v-if="hasDiscount(product)" class="price-original">¥{{ product.price }}</span>
-                        <span class="tag-stock">现货</span>
+                        <span class="tag-stock" :class="{ 'tag-stock-presale': isPresaleProduct }">
+                            {{ isPresaleProduct ? '预售' : '现货' }}
+                        </span>
+                    </div>
+                    <div v-if="isPresaleProduct" class="detail-presale-card">
+                        <div class="detail-presale-title">
+                            <i class="fa fa-hourglass-half"></i>
+                            <span>预售信息</span>
+                        </div>
+                        <template v-if="product.presaleMode === PRESALE_MODES.GOAL">
+                            <div class="detail-presale-row">
+                                <span class="detail-presale-label">开做条件</span>
+                                <span class="detail-presale-value">支付件数达到 {{ presaleProgress.target }}</span>
+                            </div>
+                            <div class="detail-presale-progress-track">
+                                <span :style="{ width: `${presaleProgress.percent}%` }"></span>
+                            </div>
+                            <div class="detail-presale-progress-meta">
+                                <span>已支付 {{ presaleProgress.paidCount }} / {{ presaleProgress.target }}</span>
+                                <span>{{ presaleProgress.percent }}%</span>
+                            </div>
+                            <p class="detail-presale-note">
+                                {{ presaleProgress.reached ? '已达到开做目标，正在推进生产。' : '进度会随着已支付订单实时更新。' }}
+                            </p>
+                        </template>
+                        <template v-else-if="product.presaleMode === PRESALE_MODES.FIXED">
+                            <div class="detail-presale-row">
+                                <span class="detail-presale-label">开做时间</span>
+                                <span class="detail-presale-value">{{ fixedPresaleDateText || '待设置' }}</span>
+                            </div>
+                            <p class="detail-presale-note">按固定预售排期开做，请留意后续发货通知。</p>
+                        </template>
                     </div>
                     <!-- [修改] 动态渲染参数表 -->
                     <div style="margin-bottom: 2rem;">
@@ -54,7 +85,9 @@
                             <input type="text" :value="quantity" class="qty-input" readonly aria-label="购买数量">
                             <button @click="quantity++" class="qty-btn">+</button>
                         </div>
-                        <span style="font-size: 0.75rem; color: #999;">库存 ({{ product.stock }}件)</span>
+                        <span style="font-size: 0.75rem; color: #999;">
+                            {{ isPresaleProduct ? '预售商品（不受库存限制）' : `库存 (${product.stock}件)` }}
+                        </span>
                     </div>
                     
                     <div v-if="product.shippingCost > 0" style="margin-bottom: 1rem; font-size: 0.75rem; color: #666;">
@@ -110,6 +143,13 @@ const route = useRoute()
 const router = useRouter()
 const store = useShopStore()
 const quantity = ref(1)
+const PRESALE_MODES = Object.freeze({
+    NONE: 'none',
+    GOAL: 'goal',
+    FIXED: 'fixed'
+})
+const PRODUCT_POLLING_INTERVAL_MS = 20000
+let pollingTimer = null
 const mainImagePreview = ref({
     show: false,
     url: ''
@@ -136,15 +176,25 @@ const onEscapeClosePreview = (event) => {
 
 // 确保进入详情页时有数据
 onMounted(() => {
-    if (store.state.products.length === 0) store.fetchProducts()
+    store.fetchProducts()
+    pollingTimer = window.setInterval(() => {
+        store.fetchProducts()
+    }, PRODUCT_POLLING_INTERVAL_MS)
     window.addEventListener('keydown', onEscapeClosePreview)
 })
 
 onUnmounted(() => {
+    if (pollingTimer) {
+        clearInterval(pollingTimer)
+        pollingTimer = null
+    }
     window.removeEventListener('keydown', onEscapeClosePreview)
 })
 
 const product = computed(() => store.state.products.find(p => p.id == route.params.id))
+const isPresaleProduct = computed(() => store.isPresaleProduct(product.value))
+const presaleProgress = computed(() => store.getPresaleProgress(product.value))
+const fixedPresaleDateText = computed(() => store.formatFixedPresaleDate(product.value))
 const hasDiscount = (item) => store.hasProductDiscount(item)
 const getDisplayPrice = (item) => store.resolveProductPrice(item)
 

@@ -348,6 +348,62 @@ hr.custom-hr { margin: 0.5rem 0; border: none; border-top: 2px solid white; opac
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
 }
+.card-presale-box {
+    margin-bottom: 0.75rem;
+    padding: 0.65rem 0.7rem;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef4ff 100%);
+    border: 1px solid #dbeafe;
+}
+.card-presale-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+.presale-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+.presale-chip-goal {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+.presale-chip-fixed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+.card-presale-count {
+    font-size: 0.75rem;
+    color: #1e3a8a;
+    font-weight: 700;
+}
+.card-presale-track {
+    margin-top: 0.45rem;
+    height: 7px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(148, 163, 184, 0.32);
+}
+.card-presale-track > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #60a5fa 0%, #2563eb 60%, #1d4ed8 100%);
+    transition: width 0.4s ease;
+}
+.card-presale-tip {
+    margin: 0.45rem 0 0;
+    font-size: 0.72rem;
+    color: #475569;
+    line-height: 1.45;
+}
 .card-footer { display: flex; justify-content: space-between; align-items: center; }
 .badge-tag { border-radius: 15px / 50%; padding: 2px 10px; font-size: 0.8rem; border: 1px solid var(--primary-color); color: var(--primary-color); }
 .stock-label { font-size: 0.75rem; color: #999; }
@@ -367,6 +423,70 @@ hr.custom-hr { margin: 0.5rem 0; border: none; border-top: 2px solid white; opac
 .price-current { font-size: 1.875rem; font-weight: bold; color: var(--primary-color); }
 .price-original { text-decoration: line-through; color: #999; font-size: 0.875rem; }
 .tag-stock { margin-left: auto; background: #bfdbfe; color: #1e40af; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+.tag-stock-presale {
+    background: #fef3c7;
+    color: #92400e;
+}
+.detail-presale-card {
+    margin: -0.4rem 0 1.4rem;
+    padding: 0.85rem 1rem;
+    border-radius: 12px;
+    border: 1px solid #dbeafe;
+    background: linear-gradient(140deg, #f8fbff 0%, #eff5ff 100%);
+}
+.detail-presale-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1d4ed8;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.55rem;
+}
+.detail-presale-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.45rem;
+}
+.detail-presale-label {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+.detail-presale-value {
+    color: #0f172a;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.detail-presale-progress-track {
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.35);
+    overflow: hidden;
+    margin-bottom: 0.35rem;
+}
+.detail-presale-progress-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #22d3ee 0%, #3b82f6 55%, #2563eb 100%);
+    transition: width 0.4s ease;
+}
+.detail-presale-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: #334155;
+    margin-bottom: 0.35rem;
+}
+.detail-presale-note {
+    margin: 0;
+    font-size: 0.77rem;
+    color: #475569;
+}
 .specs-table { width: 100%; font-size: 0.9rem; border-collapse: separate; border-spacing: 0; margin-bottom: 2rem; }
 .specs-table td { padding: 8px 0; border-bottom: 1px dashed #eee; }
 .specs-table td:first-child { color: #888; width: 80px; }
@@ -540,6 +660,18 @@ textarea.input-field { resize: none; height: 6rem; }
     .price-box { padding: 0.75rem; flex-wrap: wrap; gap: 0.35rem; }
     .price-current { font-size: 1.55rem; }
     .tag-stock { margin-left: 0.35rem; }
+    .detail-presale-card {
+        margin: -0.2rem 0 1.1rem;
+        padding: 0.75rem 0.8rem;
+    }
+    .detail-presale-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.15rem;
+    }
+    .card-presale-box {
+        padding: 0.55rem 0.6rem;
+    }
     .action-row { flex-direction: column; }
 
     /* Tabs: scrollable on mobile */

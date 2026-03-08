@@ -147,6 +147,20 @@ const COUPON_STATUS = Object.freeze({
     USED: 2
 });
 const COUPON_DISCOUNT_TYPES = ['amount', 'percent'];
+const PRESALE_MODES = Object.freeze({
+    NONE: 'none',
+    GOAL: 'goal',
+    FIXED: 'fixed'
+});
+const PRESALE_MODE_VALUES = new Set(Object.values(PRESALE_MODES));
+const PRESALE_FIXED_DATE_TYPES = Object.freeze({
+    MONTH_START: 'month_start',
+    MONTH_END: 'month_end',
+    DATE: 'date'
+});
+const PRESALE_FIXED_DATE_TYPE_VALUES = new Set(Object.values(PRESALE_FIXED_DATE_TYPES));
+const PRESALE_MONTH_VALUE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const PRESALE_DATE_VALUE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const EMAIL_NOTIFICATIONS_ENABLED = String(process.env.EMAIL_NOTIFICATIONS_ENABLED || 'false');
 const MAIL_PROVIDER = process.env.MAIL_PROVIDER || 'auto';
 const SMTP_HOST = process.env.SMTP_HOST || '';
@@ -498,6 +512,114 @@ const normalizeDiscountPrice = (discountPrice, rawPrice) => {
     return discount;
 };
 
+const normalizeProductPresaleInput = (payload = {}) => {
+    const modeRaw = String(payload.presaleMode || PRESALE_MODES.NONE).trim().toLowerCase();
+    const mode = PRESALE_MODE_VALUES.has(modeRaw) ? modeRaw : PRESALE_MODES.NONE;
+    const goalTargetRaw = Number.parseInt(payload.presaleGoalTarget, 10);
+    const goalTarget = Number.isInteger(goalTargetRaw) && goalTargetRaw > 0 ? goalTargetRaw : 0;
+    const fixedDateTypeRaw = String(payload.presaleFixedDateType || '').trim().toLowerCase();
+    const fixedDateType = PRESALE_FIXED_DATE_TYPE_VALUES.has(fixedDateTypeRaw) ? fixedDateTypeRaw : '';
+    const fixedDateValueRaw = String(payload.presaleFixedDateValue || '').trim();
+
+    if (mode === PRESALE_MODES.GOAL) {
+        if (goalTarget <= 0) {
+            return { error: '预售目标数量必须为大于0的整数' };
+        }
+        return {
+            mode,
+            goalTarget,
+            fixedDateType: '',
+            fixedDateValue: ''
+        };
+    }
+
+    if (mode === PRESALE_MODES.FIXED) {
+        if (!fixedDateType) {
+            return { error: '请设置固定预售日期类型' };
+        }
+        if (!fixedDateValueRaw) {
+            return { error: '请设置固定预售日期' };
+        }
+
+        if (
+            (fixedDateType === PRESALE_FIXED_DATE_TYPES.MONTH_START || fixedDateType === PRESALE_FIXED_DATE_TYPES.MONTH_END)
+            && !PRESALE_MONTH_VALUE_PATTERN.test(fixedDateValueRaw)
+        ) {
+            return { error: '固定预售月份格式应为 YYYY-MM' };
+        }
+
+        if (fixedDateType === PRESALE_FIXED_DATE_TYPES.DATE) {
+            if (!PRESALE_DATE_VALUE_PATTERN.test(fixedDateValueRaw)) {
+                return { error: '固定预售日期格式应为 YYYY-MM-DD' };
+            }
+            const parsedDate = new Date(`${fixedDateValueRaw}T00:00:00`);
+            if (Number.isNaN(parsedDate.getTime())) {
+                return { error: '固定预售日期无效' };
+            }
+            const normalizedDateValue = parsedDate.toISOString().slice(0, 10);
+            if (normalizedDateValue !== fixedDateValueRaw) {
+                return { error: '固定预售日期无效' };
+            }
+        }
+
+        return {
+            mode,
+            goalTarget: 0,
+            fixedDateType,
+            fixedDateValue: fixedDateValueRaw
+        };
+    }
+
+    return {
+        mode: PRESALE_MODES.NONE,
+        goalTarget: 0,
+        fixedDateType: '',
+        fixedDateValue: ''
+    };
+};
+
+const getProductPresaleSnapshot = (productRow = {}) => {
+    const normalized = normalizeProductPresaleInput({
+        presaleMode: productRow.presaleMode,
+        presaleGoalTarget: productRow.presaleGoalTarget,
+        presaleFixedDateType: productRow.presaleFixedDateType,
+        presaleFixedDateValue: productRow.presaleFixedDateValue
+    });
+    if (normalized.error) {
+        return {
+            mode: PRESALE_MODES.NONE,
+            goalTarget: 0,
+            fixedDateType: '',
+            fixedDateValue: '',
+            isPresale: false
+        };
+    }
+    return {
+        ...normalized,
+        isPresale: normalized.mode !== PRESALE_MODES.NONE
+    };
+};
+
+const buildPaidProductQuantityMap = async () => {
+    const rows = await dbAll(
+        `SELECT items FROM orders WHERE status IN (${SALES_VALID_STATUSES.map(() => '?').join(', ')})`,
+        SALES_VALID_STATUSES
+    );
+    const quantityMap = new Map();
+    rows.forEach((row) => {
+        const items = safeParse(row?.items, []);
+        if (!Array.isArray(items)) return;
+        items.forEach((item) => {
+            const productId = Number(item?.id);
+            const quantity = Number(item?.quantity) || 0;
+            if (!Number.isInteger(productId) || productId <= 0) return;
+            if (quantity <= 0) return;
+            quantityMap.set(productId, (quantityMap.get(productId) || 0) + quantity);
+        });
+    });
+    return quantityMap;
+};
+
 const normalizeSiteConfig = (rawConfig) => {
     const normalized = cloneDefaultSiteConfig();
     const payment = rawConfig && typeof rawConfig === 'object' ? rawConfig.payment || {} : {};
@@ -693,9 +815,10 @@ const calculateOrderPricing = (normalizedItems, productRowsById) => {
     for (const item of normalizedItems) {
         const product = productRowsById.get(item.id);
         if (!product) throw createBadRequestError(`商品 ${item.name || item.id} 不存在`);
+        const presaleSnapshot = getProductPresaleSnapshot(product);
 
         const productStock = Number(product.stock) || 0;
-        if (productStock < item.quantity) {
+        if (!presaleSnapshot.isPresale && productStock < item.quantity) {
             throw createBadRequestError(`商品 ${product.name || item.id} 库存不足`);
         }
 
@@ -718,7 +841,9 @@ const calculateOrderPricing = (normalizedItems, productRowsById) => {
             originalPrice,
             discountPrice,
             shippingTag,
-            shippingCost
+            shippingCost,
+            isPresale: presaleSnapshot.isPresale,
+            presaleMode: presaleSnapshot.mode
         });
     }
 
@@ -746,6 +871,10 @@ const normalizePricedItemForMerge = (item = {}) => {
     const discountPrice = normalizeDiscountPrice(item.discountPrice, originalPrice);
     const shippingTag = toShippingGroupKey(item.shippingTag);
     const shippingCost = roundMoney(Math.max(0, Number(item.shippingCost) || 0));
+    const presaleMode = PRESALE_MODE_VALUES.has(String(item.presaleMode || '').trim().toLowerCase())
+        ? String(item.presaleMode).trim().toLowerCase()
+        : (Boolean(item.isPresale) ? PRESALE_MODES.GOAL : PRESALE_MODES.NONE);
+    const isPresale = presaleMode !== PRESALE_MODES.NONE;
 
     return {
         id: productId,
@@ -755,7 +884,9 @@ const normalizePricedItemForMerge = (item = {}) => {
         originalPrice,
         discountPrice,
         shippingTag,
-        shippingCost
+        shippingCost,
+        isPresale,
+        presaleMode
     };
 };
 
@@ -775,7 +906,9 @@ const mergePricedItems = (...itemGroups) => {
                 item.originalPrice,
                 item.discountPrice === null ? '' : item.discountPrice,
                 item.shippingTag,
-                item.shippingCost
+                item.shippingCost,
+                item.isPresale ? 1 : 0,
+                item.presaleMode
             ]);
 
             const existing = merged.get(key);
@@ -1406,21 +1539,36 @@ app.put(apiPath('/admin/contact-messages/:id/status'), requireAdminAuth, async (
 });
 
 // --- 商品相关接口 (保持不变) ---
-app.get(apiPath('/products'), (req, res) => {
-    db.all("SELECT * FROM products ORDER BY sortOrder ASC, id ASC", [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        const products = rows.map(p => ({
-            ...p,
-            price: Number(p.price) || 0,
-            discountPrice: normalizeDiscountPrice(p.discountPrice, p.price),
-            imageOriginal: p.imageOriginal || '',
-            specs: safeParse(p.specs, []),
-            detailImages: safeParse(p.detailImages, []),
-            shippingTag: p.shippingTag || 'default',
-            shippingCost: Number(p.shippingCost) || 0
-        }));
+app.get(apiPath('/products'), async (req, res) => {
+    try {
+        const [rows, paidQuantityMap] = await Promise.all([
+            dbAll("SELECT * FROM products ORDER BY sortOrder ASC, id ASC", []),
+            buildPaidProductQuantityMap()
+        ]);
+
+        const products = rows.map((p) => {
+            const presaleSnapshot = getProductPresaleSnapshot(p);
+            const paidCount = paidQuantityMap.get(Number(p.id)) || 0;
+            return {
+                ...p,
+                price: Number(p.price) || 0,
+                discountPrice: normalizeDiscountPrice(p.discountPrice, p.price),
+                imageOriginal: p.imageOriginal || '',
+                specs: safeParse(p.specs, []),
+                detailImages: safeParse(p.detailImages, []),
+                shippingTag: p.shippingTag || 'default',
+                shippingCost: Number(p.shippingCost) || 0,
+                presaleMode: presaleSnapshot.mode,
+                presaleGoalTarget: presaleSnapshot.goalTarget,
+                presaleFixedDateType: presaleSnapshot.fixedDateType,
+                presaleFixedDateValue: presaleSnapshot.fixedDateValue,
+                presalePaidCount: paidCount
+            };
+        });
         res.json(products);
-    });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.post(apiPath('/upload'), requireAdminAuth, upload.single('file'), (req, res) => {
@@ -1473,11 +1621,37 @@ app.post(apiPath('/upload'), requireAdminAuth, upload.single('file'), (req, res)
 });
 
 app.post(apiPath('/products'), requireAdminAuth, (req, res) => {
-    const { name, price, discountPrice, category, typeId, stock, image, imageMobile, imageOriginal, desc, specs, detailText, detailImages, shippingTag, shippingCost } = req.body;
+    const {
+        name,
+        price,
+        discountPrice,
+        category,
+        typeId,
+        stock,
+        image,
+        imageMobile,
+        imageOriginal,
+        desc,
+        specs,
+        detailText,
+        detailImages,
+        shippingTag,
+        shippingCost,
+        presaleMode,
+        presaleGoalTarget,
+        presaleFixedDateType,
+        presaleFixedDateValue
+    } = req.body;
     const cleanPrice = Number(price);
     const cleanStock = Number(stock);
     const cleanShippingCost = Number(shippingCost || 0);
     const cleanDiscountPrice = normalizeDiscountPrice(discountPrice, cleanPrice);
+    const presale = normalizeProductPresaleInput({
+        presaleMode,
+        presaleGoalTarget,
+        presaleFixedDateType,
+        presaleFixedDateValue
+    });
 
     if (!Number.isFinite(cleanPrice) || cleanPrice < 0) {
         return res.status(400).json({ error: '商品价格无效' });
@@ -1491,8 +1665,11 @@ app.post(apiPath('/products'), requireAdminAuth, (req, res) => {
     if (discountPrice !== null && discountPrice !== undefined && String(discountPrice) !== '' && cleanDiscountPrice === null) {
         return res.status(400).json({ error: '折扣价必须大于0且小于原价' });
     }
+    if (presale.error) {
+        return res.status(400).json({ error: presale.error });
+    }
 
-    const sql = `INSERT INTO products (name, price, discountPrice, category, typeId, stock, image, imageMobile, imageOriginal, desc, specs, detailText, detailImages, shippingTag, shippingCost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO products (name, price, discountPrice, category, typeId, stock, image, imageMobile, imageOriginal, desc, specs, detailText, detailImages, shippingTag, shippingCost, presaleMode, presaleGoalTarget, presaleFixedDateType, presaleFixedDateValue) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
     const params = [
         String(name || '').trim(),
         cleanPrice,
@@ -1508,7 +1685,11 @@ app.post(apiPath('/products'), requireAdminAuth, (req, res) => {
         detailText || '',
         JSON.stringify(detailImages || []),
         shippingTag || 'default',
-        cleanShippingCost
+        cleanShippingCost,
+        presale.mode,
+        presale.goalTarget,
+        presale.fixedDateType,
+        presale.fixedDateValue
     ];
     db.run(sql, params, function (err) {
         if (err) return res.status(500).json({ error: err.message });
@@ -1532,11 +1713,37 @@ app.put(apiPath('/products/reorder'), requireAdminAuth, (req, res) => {
 });
 
 app.put(apiPath('/products/:id'), requireAdminAuth, (req, res) => {
-    const { name, price, discountPrice, category, typeId, stock, image, imageMobile, imageOriginal, desc, specs, detailText, detailImages, shippingTag, shippingCost } = req.body;
+    const {
+        name,
+        price,
+        discountPrice,
+        category,
+        typeId,
+        stock,
+        image,
+        imageMobile,
+        imageOriginal,
+        desc,
+        specs,
+        detailText,
+        detailImages,
+        shippingTag,
+        shippingCost,
+        presaleMode,
+        presaleGoalTarget,
+        presaleFixedDateType,
+        presaleFixedDateValue
+    } = req.body;
     const cleanPrice = Number(price);
     const cleanStock = Number(stock);
     const cleanShippingCost = Number(shippingCost || 0);
     const cleanDiscountPrice = normalizeDiscountPrice(discountPrice, cleanPrice);
+    const presale = normalizeProductPresaleInput({
+        presaleMode,
+        presaleGoalTarget,
+        presaleFixedDateType,
+        presaleFixedDateValue
+    });
 
     if (!Number.isFinite(cleanPrice) || cleanPrice < 0) {
         return res.status(400).json({ error: '商品价格无效' });
@@ -1550,8 +1757,11 @@ app.put(apiPath('/products/:id'), requireAdminAuth, (req, res) => {
     if (discountPrice !== null && discountPrice !== undefined && String(discountPrice) !== '' && cleanDiscountPrice === null) {
         return res.status(400).json({ error: '折扣价必须大于0且小于原价' });
     }
+    if (presale.error) {
+        return res.status(400).json({ error: presale.error });
+    }
 
-    const sql = `UPDATE products SET name=?, price=?, discountPrice=?, category=?, typeId=?, stock=?, image=?, imageMobile=?, imageOriginal=?, desc=?, specs=?, detailText=?, detailImages=?, shippingTag=?, shippingCost=? WHERE id=?`;
+    const sql = `UPDATE products SET name=?, price=?, discountPrice=?, category=?, typeId=?, stock=?, image=?, imageMobile=?, imageOriginal=?, desc=?, specs=?, detailText=?, detailImages=?, shippingTag=?, shippingCost=?, presaleMode=?, presaleGoalTarget=?, presaleFixedDateType=?, presaleFixedDateValue=? WHERE id=?`;
     const params = [
         String(name || '').trim(),
         cleanPrice,
@@ -1568,6 +1778,10 @@ app.put(apiPath('/products/:id'), requireAdminAuth, (req, res) => {
         JSON.stringify(detailImages || []),
         shippingTag || 'default',
         cleanShippingCost,
+        presale.mode,
+        presale.goalTarget,
+        presale.fixedDateType,
+        presale.fixedDateValue,
         req.params.id
     ];
     db.run(sql, params, function (err) {
@@ -1707,7 +1921,7 @@ app.post(apiPath('/orders'), async (req, res) => {
 
         const uniqueProductIds = [...new Set(normalizedItems.map((item) => item.id))];
         const productRows = await dbAll(
-            `SELECT id, name, price, discountPrice, stock, shippingTag, shippingCost
+            `SELECT id, name, price, discountPrice, stock, shippingTag, shippingCost, presaleMode, presaleGoalTarget, presaleFixedDateType, presaleFixedDateValue
              FROM products
              WHERE id IN (${uniqueProductIds.map(() => '?').join(', ')})`,
             uniqueProductIds
@@ -1721,7 +1935,8 @@ app.post(apiPath('/orders'), async (req, res) => {
         for (const [productId, totalQty] of quantityByProductId) {
             const product = productRowsById.get(productId);
             if (!product) throw createBadRequestError(`商品 ${productId} 不存在`);
-            if ((Number(product.stock) || 0) < totalQty) {
+            const presaleSnapshot = getProductPresaleSnapshot(product);
+            if (!presaleSnapshot.isPresale && (Number(product.stock) || 0) < totalQty) {
                 throw createBadRequestError(`商品 ${product.name || productId} 库存不足`);
             }
         }
@@ -1938,6 +2153,10 @@ app.post(apiPath('/orders'), async (req, res) => {
         }
 
         for (const [productId, totalQty] of quantityByProductId) {
+            const product = productRowsById.get(productId);
+            if (!product) continue;
+            const presaleSnapshot = getProductPresaleSnapshot(product);
+            if (presaleSnapshot.isPresale) continue;
             await dbRun("UPDATE products SET stock = stock - ? WHERE id = ?", [totalQty, productId]);
         }
 
@@ -2211,6 +2430,7 @@ app.put(apiPath('/orders/:id/status'), requireAdminAuth, async (req, res) => {
             for (const item of items) {
                 const productId = Number(item.id);
                 const quantity = Number(item.quantity) || 0;
+                if (Boolean(item?.isPresale)) continue;
                 if (Number.isInteger(productId) && quantity > 0) {
                     await dbRun("UPDATE products SET stock = stock + ? WHERE id = ?", [quantity, productId]);
                 }
@@ -2272,6 +2492,7 @@ app.delete(apiPath('/orders/:id'), requireAdminAuth, async (req, res) => {
         for (const item of items) {
             const productId = Number(item.id);
             const quantity = Number(item.quantity) || 0;
+            if (Boolean(item?.isPresale)) continue;
             if (Number.isInteger(productId) && quantity > 0) {
                 await dbRun('UPDATE products SET stock = stock + ? WHERE id = ?', [quantity, productId]);
             }

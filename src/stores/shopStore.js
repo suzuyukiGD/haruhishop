@@ -16,6 +16,18 @@ const CONTACT_MESSAGES_URL = resolveApiPath('/contact/messages')
 const ADMIN_CONTACT_MESSAGES_URL = resolveApiPath('/admin/contact-messages')
 const FREE_SHIPPING_THRESHOLD = 150
 const FREE_SHIPPING_THRESHOLD_CENTS = Math.round(FREE_SHIPPING_THRESHOLD * 100)
+const PRESALE_MODES = Object.freeze({
+    NONE: 'none',
+    GOAL: 'goal',
+    FIXED: 'fixed'
+})
+const PRESALE_FIXED_DATE_TYPES = Object.freeze({
+    MONTH_START: 'month_start',
+    MONTH_END: 'month_end',
+    DATE: 'date'
+})
+const PRESALE_MODE_VALUES = new Set(Object.values(PRESALE_MODES))
+const PRESALE_FIXED_DATE_TYPE_VALUES = new Set(Object.values(PRESALE_FIXED_DATE_TYPES))
 const DEFAULT_SITE_CONFIG = Object.freeze({
     payment: {
         wechatQr: '',
@@ -44,12 +56,29 @@ const resolveProductPrice = (product) => {
 
 const normalizeProduct = (product = {}) => {
     const basePrice = Number(product.price)
+    const presaleModeRaw = String(product.presaleMode || PRESALE_MODES.NONE).trim().toLowerCase()
+    const presaleMode = PRESALE_MODE_VALUES.has(presaleModeRaw) ? presaleModeRaw : PRESALE_MODES.NONE
+    const presaleGoalTargetRaw = Number.parseInt(product.presaleGoalTarget, 10)
+    const presaleGoalTarget = Number.isInteger(presaleGoalTargetRaw) && presaleGoalTargetRaw > 0 ? presaleGoalTargetRaw : 0
+    const presaleFixedDateTypeRaw = String(product.presaleFixedDateType || '').trim().toLowerCase()
+    const presaleFixedDateType = PRESALE_FIXED_DATE_TYPE_VALUES.has(presaleFixedDateTypeRaw) ? presaleFixedDateTypeRaw : ''
+    const presaleFixedDateValue = String(product.presaleFixedDateValue || '').trim()
+    const presalePaidCountRaw = Number(product.presalePaidCount)
+    const presalePaidCount = Number.isFinite(presalePaidCountRaw) && presalePaidCountRaw > 0
+        ? Math.floor(presalePaidCountRaw)
+        : 0
+
     return {
         ...product,
         imageOriginal: typeof product.imageOriginal === 'string' ? product.imageOriginal : '',
         price: Number.isFinite(basePrice) ? Number(basePrice.toFixed(2)) : 0,
         discountPrice: normalizeDiscountPrice(product.discountPrice, product.price),
-        shippingCost: Number.isFinite(Number(product.shippingCost)) ? Number(product.shippingCost) : 0
+        shippingCost: Number.isFinite(Number(product.shippingCost)) ? Number(product.shippingCost) : 0,
+        presaleMode,
+        presaleGoalTarget: presaleMode === PRESALE_MODES.GOAL ? presaleGoalTarget : 0,
+        presaleFixedDateType: presaleMode === PRESALE_MODES.FIXED ? presaleFixedDateType : '',
+        presaleFixedDateValue: presaleMode === PRESALE_MODES.FIXED ? presaleFixedDateValue : '',
+        presalePaidCount
     }
 }
 
@@ -186,6 +215,51 @@ const state = reactive({
 })
 
 export const useShopStore = () => {
+    const isPresaleProduct = (product) => {
+        const mode = String(product?.presaleMode || '').trim().toLowerCase()
+        return mode === PRESALE_MODES.GOAL || mode === PRESALE_MODES.FIXED
+    }
+
+    const getPresaleProgress = (product) => {
+        const target = Number(product?.presaleGoalTarget)
+        const paidCount = Number(product?.presalePaidCount) || 0
+        if (!Number.isFinite(target) || target <= 0) {
+            return {
+                paidCount,
+                target: 0,
+                percent: 0,
+                reached: false
+            }
+        }
+        const percent = Math.min(100, Math.max(0, (paidCount / target) * 100))
+        return {
+            paidCount,
+            target,
+            percent: Number(percent.toFixed(2)),
+            reached: paidCount >= target
+        }
+    }
+
+    const formatFixedPresaleDate = (product) => {
+        const type = String(product?.presaleFixedDateType || '').trim().toLowerCase()
+        const value = String(product?.presaleFixedDateValue || '').trim()
+        if (!value) return ''
+
+        if (type === PRESALE_FIXED_DATE_TYPES.MONTH_START || type === PRESALE_FIXED_DATE_TYPES.MONTH_END) {
+            const [year, month] = value.split('-')
+            if (!year || !month) return ''
+            return type === PRESALE_FIXED_DATE_TYPES.MONTH_START
+                ? `${year}年${month}月初`
+                : `${year}年${month}月底`
+        }
+        if (type === PRESALE_FIXED_DATE_TYPES.DATE) {
+            const [year, month, day] = value.split('-')
+            if (!year || !month || !day) return ''
+            return `${year}年${month}月${day}日`
+        }
+        return ''
+    }
+
     // --- 计算属性 ---
     const cartCount = computed(() => state.cart.reduce((acc, item) => acc + item.quantity, 0))
     const cartTotal = computed(() => {
@@ -907,7 +981,7 @@ export const useShopStore = () => {
         previewCoupon, fetchAdminCoupons, createCouponBatch, updateCouponStatus, deleteCoupon,
         submitContactMessage, fetchAdminContactMessages, updateAdminContactMessageStatus,
         fetchSiteConfig, updateSiteConfig,
-        resolveProductPrice, hasProductDiscount,
+        resolveProductPrice, hasProductDiscount, isPresaleProduct, getPresaleProgress, formatFixedPresaleDate,
         adminLogin, adminLogout
     }
 }

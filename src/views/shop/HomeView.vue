@@ -25,9 +25,31 @@
                     </div>
                 </div>
                 <p class="card-desc">{{ item.desc }}</p>
+                <div v-if="item.presaleMode === PRESALE_MODES.GOAL" class="card-presale-box">
+                    <div class="card-presale-head">
+                        <span class="presale-chip presale-chip-goal">进度预售</span>
+                        <span class="card-presale-count">
+                            {{ getPresaleProgress(item).paidCount }}/{{ getPresaleProgress(item).target }}
+                        </span>
+                    </div>
+                    <div class="card-presale-track">
+                        <span :style="{ width: `${getPresaleProgress(item).percent}%` }"></span>
+                    </div>
+                    <p class="card-presale-tip">
+                        {{ getPresaleProgress(item).reached ? '已达标，进入开做阶段' : '已支付订单持续累计中' }}
+                    </p>
+                </div>
+                <div v-else-if="item.presaleMode === PRESALE_MODES.FIXED" class="card-presale-box">
+                    <div class="card-presale-head">
+                        <span class="presale-chip presale-chip-fixed">固定预售</span>
+                    </div>
+                    <p class="card-presale-tip">预售开做时间：{{ getFixedPresaleDateText(item) || '待设置' }}</p>
+                </div>
                 <div class="card-footer">
                     <span class="badge-tag">{{ item.category }}</span>
-                    <small class="stock-label">库存: {{ item.stock }}</small>
+                    <small class="stock-label">
+                        {{ item.presaleMode === PRESALE_MODES.NONE ? `库存: ${item.stock}` : '预售商品' }}
+                    </small>
                 </div>
             </div>
         </div>
@@ -40,14 +62,30 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useShopStore } from '@/stores/shopStore'
 
 const store = useShopStore()
+const PRESALE_MODES = Object.freeze({
+    NONE: 'none',
+    GOAL: 'goal',
+    FIXED: 'fixed'
+})
+const PRODUCT_POLLING_INTERVAL_MS = 20000
+let pollingTimer = null
 
-// [新增] 页面加载时获取数据
 onMounted(() => {
     store.fetchProducts()
+    pollingTimer = window.setInterval(() => {
+        store.fetchProducts()
+    }, PRODUCT_POLLING_INTERVAL_MS)
+})
+
+onUnmounted(() => {
+    if (pollingTimer) {
+        clearInterval(pollingTimer)
+        pollingTimer = null
+    }
 })
 
 const filteredProducts = computed(() => {
@@ -60,4 +98,6 @@ const currentTypeName = computed(() => store.state.currentType === 'all' ? '全�
 
 const hasDiscount = (item) => store.hasProductDiscount(item)
 const getDisplayPrice = (item) => store.resolveProductPrice(item)
+const getPresaleProgress = (item) => store.getPresaleProgress(item)
+const getFixedPresaleDateText = (item) => store.formatFixedPresaleDate(item)
 </script>

@@ -39,7 +39,11 @@ db.serialize(() => {
         detailText TEXT,
         detailImages TEXT,
         shippingTag TEXT,
-        shippingCost INTEGER
+        shippingCost INTEGER,
+        presaleMode TEXT DEFAULT 'none',
+        presaleGoalTarget INTEGER DEFAULT 0,
+        presaleFixedDateType TEXT,
+        presaleFixedDateValue TEXT
     )`);
 
     // [修改] 升级订单表，增加地址详情字段
@@ -155,6 +159,10 @@ db.serialize(() => {
     ensureColumn('products', 'imageMobile', 'TEXT');
     ensureColumn('products', 'imageOriginal', 'TEXT');
     ensureColumn('products', 'sortOrder', 'INTEGER DEFAULT 0');
+    ensureColumn('products', 'presaleMode', "TEXT DEFAULT 'none'");
+    ensureColumn('products', 'presaleGoalTarget', 'INTEGER DEFAULT 0');
+    ensureColumn('products', 'presaleFixedDateType', 'TEXT');
+    ensureColumn('products', 'presaleFixedDateValue', 'TEXT');
 });
 
 module.exports = db;

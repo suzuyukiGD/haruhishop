@@ -9,7 +9,7 @@
     <div class="table-container">
         <table class="data-table">
             <thead>
-                <tr><th style="width:2rem"></th><th>ID</th><th>图片</th><th>名称</th><th>分类</th><th>价格</th><th>库存</th><th>发货组</th><th>运费</th><th>操作</th></tr>
+                <tr><th style="width:2rem"></th><th>ID</th><th>图片</th><th>名称</th><th>分类</th><th>价格</th><th>库存</th><th>预售</th><th>发货组</th><th>运费</th><th>操作</th></tr>
             </thead>
             <tbody>
                 <tr
@@ -29,6 +29,10 @@
                         <div v-if="hasDiscount(p)" class="text-sub" style="text-decoration: line-through;">原价 ¥{{ p.price }}</div>
                     </td>
                     <td :style="{color: p.stock < 10 ? 'red' : 'inherit', fontWeight: 'bold'}">{{ p.stock }}</td>
+                    <td class="text-sub">
+                        <div class="presale-table-main">{{ getPresaleModeLabel(p) }}</div>
+                        <div v-if="getPresaleSummary(p)" class="presale-table-sub">{{ getPresaleSummary(p) }}</div>
+                    </td>
                     <td class="text-sub">{{ p.shippingTag }}</td>
                     <td class="text-sub">¥{{ p.shippingCost }}</td>
                     <td>
@@ -64,10 +68,51 @@
                 <div><label class="form-label">折扣价 (¥)</label><input v-model="form.discountPrice" class="form-input" type="number" min="0" step="0.01" placeholder="留空表示不打折"></div>
                 <div><label class="form-label">库存</label><input v-model.number="form.stock" class="form-input" type="number"></div>
 
-                <!-- 第三行：运费 -->
+                <!-- 第三行：预售配置 -->
+                <div class="full-span presale-config-wrap">
+                    <div class="presale-config-head">
+                        <label class="form-label" style="margin: 0;">预售设置</label>
+                        <span class="presale-config-hint">支持进度达标开做与固定预售日期两种模式</span>
+                    </div>
+                    <div class="presale-config-grid">
+                        <div>
+                            <label class="form-label">预售模式</label>
+                            <select v-model="form.presaleMode" class="form-select">
+                                <option :value="PRESALE_MODES.NONE">普通现货</option>
+                                <option :value="PRESALE_MODES.GOAL">目标达标预售</option>
+                                <option :value="PRESALE_MODES.FIXED">固定日期预售</option>
+                            </select>
+                        </div>
+                        <div v-if="form.presaleMode === PRESALE_MODES.GOAL">
+                            <label class="form-label">目标支付件数</label>
+                            <input v-model.number="form.presaleGoalTarget" class="form-input" type="number" min="1" step="1" placeholder="如 100">
+                        </div>
+                        <template v-if="form.presaleMode === PRESALE_MODES.FIXED">
+                            <div>
+                                <label class="form-label">固定日期类型</label>
+                                <select v-model="form.presaleFixedDateType" class="form-select">
+                                    <option :value="PRESALE_FIXED_DATE_TYPES.MONTH_START">某月初</option>
+                                    <option :value="PRESALE_FIXED_DATE_TYPES.MONTH_END">某月底</option>
+                                    <option :value="PRESALE_FIXED_DATE_TYPES.DATE">具体日期</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label">固定日期值</label>
+                                <input
+                                    v-model="form.presaleFixedDateValue"
+                                    class="form-input"
+                                    :type="fixedDateInputType"
+                                    :placeholder="form.presaleFixedDateType === PRESALE_FIXED_DATE_TYPES.DATE ? 'YYYY-MM-DD' : 'YYYY-MM'"
+                                >
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- 第四行：运费 -->
                 <div><label class="form-label">单品运费 (¥)</label><input v-model.number="form.shippingCost" class="form-input" type="number"></div>
 
-                <!-- 第四行：主图上传 -->
+                <!-- 第五行：主图上传 -->
                 <div class="full-span">
                     <label class="form-label">商品主图</label>
                     <div class="main-image-row">
@@ -85,13 +130,13 @@
                     </div>
                 </div>
 
-                <!-- 第五行：描述 -->
+                <!-- 第六行：描述 -->
                 <div class="full-span">
                     <label class="form-label">短描述 (列表页显示)</label>
                     <input v-model="form.desc" class="form-input">
                 </div>
 
-                <!-- 第六行：参数表 (Key-Value 编辑) -->
+                <!-- 第七行：参数表 (Key-Value 编辑) -->
                 <div class="full-span" style="background: #f9fafb; padding: 1rem; border-radius: 8px;">
                     <label class="form-label" style="font-weight: bold;">规格参数表</label>
                     <div v-for="(spec, idx) in form.specs" :key="idx" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
@@ -102,13 +147,13 @@
                     <button @click="addSpec" class="admin-btn btn-outline" style="font-size: 0.75rem;">+ 添加参数</button>
                 </div>
 
-                <!-- 第七行：详情页文案 -->
+                <!-- 第八行：详情页文案 -->
                 <div class="full-span">
                     <label class="form-label">详情页长文案</label>
                     <textarea v-model="form.detailText" class="form-input" style="height: 100px;"></textarea>
                 </div>
 
-                <!-- 第八行：详情多图上传 -->
+                <!-- 第九行：详情多图上传 -->
                 <div class="full-span">
                     <label class="form-label">详情页图片组 <span style="font-weight: normal; color: #999; font-size: 0.75rem;">拖拽可排序</span></label>
                     <div class="detail-images-sortable">
@@ -188,6 +233,19 @@ const HEADER_IMAGE_COMPRESSION_CONFIG = Object.freeze({
         quality: 0.88
     }
 })
+const PRESALE_MODES = Object.freeze({
+    NONE: 'none',
+    GOAL: 'goal',
+    FIXED: 'fixed'
+})
+const PRESALE_FIXED_DATE_TYPES = Object.freeze({
+    MONTH_START: 'month_start',
+    MONTH_END: 'month_end',
+    DATE: 'date'
+})
+const PRESALE_FIXED_DATE_TYPE_VALUES = new Set(Object.values(PRESALE_FIXED_DATE_TYPES))
+const PRESALE_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
+const PRESALE_DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
 
 // 表单初始状态
 const initialForm = {
@@ -195,7 +253,11 @@ const initialForm = {
     discountPrice: '',
     image: '', imageMobile: '', imageOriginal: '', desc: '',
     specs: [], detailText: '', detailImages: [],
-    shippingTag: '深圳', shippingCost: 0
+    shippingTag: '深圳', shippingCost: 0,
+    presaleMode: PRESALE_MODES.NONE,
+    presaleGoalTarget: '',
+    presaleFixedDateType: PRESALE_FIXED_DATE_TYPES.MONTH_START,
+    presaleFixedDateValue: ''
 }
 
 const form = reactive({ ...initialForm })
@@ -210,6 +272,10 @@ const openModal = (product = null) => {
         form.discountPrice = p.discountPrice ?? ''
         form.imageMobile = p.imageMobile || ''
         form.imageOriginal = p.imageOriginal || ''
+        form.presaleMode = p.presaleMode || PRESALE_MODES.NONE
+        form.presaleGoalTarget = Number(p.presaleGoalTarget) > 0 ? Number(p.presaleGoalTarget) : ''
+        form.presaleFixedDateType = p.presaleFixedDateType || PRESALE_FIXED_DATE_TYPES.MONTH_START
+        form.presaleFixedDateValue = p.presaleFixedDateValue || ''
         if (!form.specs) form.specs = []
         if (!form.detailImages) form.detailImages = []
     } else {
@@ -255,6 +321,39 @@ const initCropper = (aspectRatio) => {
 watch(showCropModal, (v) => {
     if (!v) destroyCropper()
 })
+
+watch(() => form.presaleMode, (mode) => {
+    if (mode !== PRESALE_MODES.GOAL) form.presaleGoalTarget = ''
+    if (mode !== PRESALE_MODES.FIXED) {
+        form.presaleFixedDateType = PRESALE_FIXED_DATE_TYPES.MONTH_START
+        form.presaleFixedDateValue = ''
+    }
+})
+
+watch(() => form.presaleFixedDateType, (type) => {
+    if (form.presaleMode !== PRESALE_MODES.FIXED) return
+    if (!PRESALE_FIXED_DATE_TYPE_VALUES.has(type)) {
+        form.presaleFixedDateType = PRESALE_FIXED_DATE_TYPES.MONTH_START
+        form.presaleFixedDateValue = ''
+        return
+    }
+    const value = String(form.presaleFixedDateValue || '').trim()
+    if (!value) return
+    if (type === PRESALE_FIXED_DATE_TYPES.DATE && PRESALE_MONTH_PATTERN.test(value)) {
+        form.presaleFixedDateValue = `${value}-01`
+        return
+    }
+    if (
+        (type === PRESALE_FIXED_DATE_TYPES.MONTH_START || type === PRESALE_FIXED_DATE_TYPES.MONTH_END)
+        && PRESALE_DATE_PATTERN.test(value)
+    ) {
+        form.presaleFixedDateValue = value.slice(0, 7)
+    }
+})
+
+const fixedDateInputType = computed(() => (
+    form.presaleFixedDateType === PRESALE_FIXED_DATE_TYPES.DATE ? 'date' : 'month'
+))
 
 const encodeCanvasToWebp = (canvas, quality) => (
     new Promise((resolve) => {
@@ -444,6 +543,24 @@ const hasDiscount = (product) => {
 }
 
 const getDisplayPrice = (product) => (hasDiscount(product) ? Number(product.discountPrice) : Number(product.price))
+const getPresaleModeLabel = (product) => {
+    const mode = String(product?.presaleMode || '').trim().toLowerCase()
+    if (mode === PRESALE_MODES.GOAL) return '达标预售'
+    if (mode === PRESALE_MODES.FIXED) return '固定预售'
+    return '现货'
+}
+const getPresaleSummary = (product) => {
+    const mode = String(product?.presaleMode || '').trim().toLowerCase()
+    if (mode === PRESALE_MODES.GOAL) {
+        const progress = store.getPresaleProgress(product)
+        if (!progress.target) return ''
+        return `${progress.paidCount}/${progress.target}${progress.reached ? '（已达标）' : ''}`
+    }
+    if (mode === PRESALE_MODES.FIXED) {
+        return store.formatFixedPresaleDate(product)
+    }
+    return ''
+}
 
 const save = async () => {
     const payload = { ...form }
@@ -462,6 +579,48 @@ const save = async () => {
             store.showNotification('折扣价需小于原价')
             return
         }
+    }
+
+    payload.presaleMode = String(payload.presaleMode || PRESALE_MODES.NONE).trim().toLowerCase()
+    if (payload.presaleMode === PRESALE_MODES.GOAL) {
+        const target = Number.parseInt(payload.presaleGoalTarget, 10)
+        if (!Number.isInteger(target) || target <= 0) {
+            store.showNotification('预售目标数量必须为大于0的整数')
+            return
+        }
+        payload.presaleGoalTarget = target
+        payload.presaleFixedDateType = ''
+        payload.presaleFixedDateValue = ''
+    } else if (payload.presaleMode === PRESALE_MODES.FIXED) {
+        const fixedDateType = String(payload.presaleFixedDateType || '').trim().toLowerCase()
+        const fixedDateValue = String(payload.presaleFixedDateValue || '').trim()
+        if (!PRESALE_FIXED_DATE_TYPE_VALUES.has(fixedDateType)) {
+            store.showNotification('请选择固定预售日期类型')
+            return
+        }
+        if (!fixedDateValue) {
+            store.showNotification('请填写固定预售日期')
+            return
+        }
+        if (
+            (fixedDateType === PRESALE_FIXED_DATE_TYPES.MONTH_START || fixedDateType === PRESALE_FIXED_DATE_TYPES.MONTH_END)
+            && !PRESALE_MONTH_PATTERN.test(fixedDateValue)
+        ) {
+            store.showNotification('固定预售月份格式应为 YYYY-MM')
+            return
+        }
+        if (fixedDateType === PRESALE_FIXED_DATE_TYPES.DATE && !PRESALE_DATE_PATTERN.test(fixedDateValue)) {
+            store.showNotification('固定预售日期格式应为 YYYY-MM-DD')
+            return
+        }
+        payload.presaleGoalTarget = 0
+        payload.presaleFixedDateType = fixedDateType
+        payload.presaleFixedDateValue = fixedDateValue
+    } else {
+        payload.presaleMode = PRESALE_MODES.NONE
+        payload.presaleGoalTarget = 0
+        payload.presaleFixedDateType = ''
+        payload.presaleFixedDateValue = ''
     }
 
     let success = false
@@ -569,6 +728,36 @@ const save = async () => {
     border-radius: 0 4px 0 4px;
 }
 
+.presale-config-wrap {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.85rem 1rem 1rem;
+}
+.presale-config-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.85rem;
+}
+.presale-config-hint {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+.presale-config-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+.presale-table-main {
+    font-weight: 600;
+    color: #334155;
+}
+.presale-table-sub {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
 /* 裁切弹窗 */
 .crop-modal-card {
     width: min(720px, 94vw);
@@ -590,6 +779,9 @@ const save = async () => {
     .product-form-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .presale-config-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 639px) {
@@ -601,6 +793,14 @@ const save = async () => {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.5rem;
+    }
+    .presale-config-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+    .presale-config-grid {
+        grid-template-columns: 1fr;
     }
 }
 </style>
