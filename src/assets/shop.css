@@ -1846,12 +1846,18 @@ textarea.input-field {
         gap: 1.5rem;
     }
 
-    /* Filter buttons: horizontal scroll */
+    /* Filter buttons: horizontal scroll, hide scrollbar */
     .custom-btn-group {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         flex-wrap: nowrap;
-        padding-bottom: 4px;
+        padding-bottom: 0;
+        scrollbar-width: none;            /* Firefox */
+        -ms-overflow-style: none;         /* IE/Edge */
+    }
+
+    .custom-btn-group::-webkit-scrollbar {
+        display: none;                    /* Chrome/Safari */
     }
 
     /* Form grid: single column on phone */
