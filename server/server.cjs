@@ -3264,9 +3264,52 @@ const migrateOrderTypeFlags = async () => {
     }
 };
 
+const migrateSubOrders = async () => {
+    try {
+        const cols = await dbAll('PRAGMA table_info(sub_orders)');
+        if (cols.length === 0) return;
+
+        const rows = await dbAll(
+            `SELECT o.id, o.items FROM orders o
+             WHERE o.hasPresaleItems = 1 AND o.hasSpotItems = 1
+               AND NOT EXISTS (SELECT 1 FROM sub_orders s WHERE s.orderId = o.id)`
+        );
+        if (rows.length === 0) return;
+
+        for (const row of rows) {
+            const items = safeParse(row.items, []);
+            const spotItems = items.filter(i => !i.isPresale);
+            const presaleItems = items.filter(i => i.isPresale);
+            if (spotItems.length === 0 || presaleItems.length === 0) continue;
+
+            await dbRun(
+                'INSERT OR IGNORE INTO sub_orders (orderId, subKey, label, items) VALUES (?, ?, ?, ?)',
+                [row.id, 'spot', '现货包裹', JSON.stringify(spotItems)]
+            );
+            for (const item of presaleItems) {
+                const productId = Number(item.id);
+                const subKey = `presale-${productId}`;
+                const label = `预售: ${item.name || '商品' + productId}`;
+                await dbRun(
+                    'INSERT OR IGNORE INTO sub_orders (orderId, subKey, label, items) VALUES (?, ?, ?, ?)',
+                    [row.id, subKey, label, JSON.stringify([item])]
+                );
+            }
+        }
+        if (rows.length > 0) {
+            console.log(`Migration: created sub-orders for ${rows.length} legacy mixed orders`);
+        }
+    } catch (err) {
+        console.error('Migration sub-orders failed:', err);
+    }
+};
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT} (API prefix: ${API_PREFIX})`);
     emailService.startWorker();
     // Delay migration to ensure ensureColumn calls in db.cjs have completed
-    setTimeout(migrateOrderTypeFlags, 2000);
+    setTimeout(async () => {
+        await migrateOrderTypeFlags();
+        await migrateSubOrders();
+    }, 2000);
 });
