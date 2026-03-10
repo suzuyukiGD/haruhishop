@@ -151,6 +151,24 @@ db.serialize(() => {
     db.run(`CREATE INDEX IF NOT EXISTS idx_email_jobs_order_event_time
             ON email_jobs(orderId, eventKey, created_at)`);
 
+    // 子订单表: 用于混合订单的拆分发货
+    db.run(`CREATE TABLE IF NOT EXISTS sub_orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        orderId TEXT NOT NULL,
+        subKey TEXT NOT NULL,
+        label TEXT NOT NULL,
+        items TEXT NOT NULL,
+        trackingCompany TEXT,
+        trackingNo TEXT,
+        shipped INTEGER DEFAULT 0,
+        shipped_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(orderId, subKey)
+    )`);
+
+    db.run(`CREATE INDEX IF NOT EXISTS idx_sub_orders_order
+            ON sub_orders(orderId)`);
+
     ensureColumn('products', 'discountPrice', 'INTEGER');
     ensureColumn('orders', 'originalTotal', 'REAL DEFAULT 0');
     ensureColumn('orders', 'discountAmount', 'REAL DEFAULT 0');
@@ -166,6 +184,10 @@ db.serialize(() => {
     ensureColumn('products', 'presaleFixedDateValue', 'TEXT');
     ensureColumn('products', 'presalePaidOffset', 'INTEGER DEFAULT 0');
     ensureColumn('orders', 'exported', 'INTEGER DEFAULT 0');
+    ensureColumn('orders', 'hasPresaleItems', 'INTEGER DEFAULT 0');
+    ensureColumn('orders', 'hasSpotItems', 'INTEGER DEFAULT 1');
+    ensureColumn('orders', 'spotExported', 'INTEGER DEFAULT 0');
+    ensureColumn('orders', 'presaleExportedProducts', 'TEXT');
 });
 
 module.exports = db;

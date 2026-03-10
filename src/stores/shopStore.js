@@ -890,6 +890,8 @@ export const useShopStore = () => {
         if (filters.sortDir) search.set('sortDir', String(filters.sortDir))
         if (filters.page) search.set('page', String(filters.page))
         if (filters.pageSize) search.set('pageSize', String(filters.pageSize))
+        if (filters.hasPresale) search.set('hasPresale', '1')
+        if (filters.hasSpot) search.set('hasSpot', '1')
 
         try {
             const res = await fetch(`${ORDER_URL}?${search.toString()}`, {
@@ -1027,11 +1029,12 @@ export const useShopStore = () => {
         }
     }
 
-    const fetchOrderIds = async (status, exported) => {
+    const fetchOrderIds = async (status, exported, { notFullyExported } = {}) => {
         if (!ensureAdminAuth()) return []
         const search = new URLSearchParams()
         search.set('status', String(status))
-        if (exported !== undefined) search.set('exported', String(exported))
+        if (exported !== undefined && exported !== null) search.set('exported', String(exported))
+        if (notFullyExported) search.set('notFullyExported', '1')
         try {
             const res = await fetch(`${ORDER_URL}/ids?${search.toString()}`, { headers: buildAdminAuthHeaders() })
             if (!res.ok) return []
@@ -1052,6 +1055,61 @@ export const useShopStore = () => {
         } catch { return false }
     }
 
+    const markOrdersSpotExported = async (ids) => {
+        if (!ensureAdminAuth() || !ids.length) return false
+        try {
+            const res = await fetch(`${ORDER_URL}/mark-spot-exported`, {
+                method: 'PUT',
+                headers: buildAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ ids })
+            })
+            return res.ok
+        } catch { return false }
+    }
+
+    const markPresaleExported = async (ids, productIds) => {
+        if (!ensureAdminAuth() || !ids.length || !productIds.length) return false
+        try {
+            const res = await fetch(`${ORDER_URL}/mark-presale-exported`, {
+                method: 'PUT',
+                headers: buildAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ ids, productIds })
+            })
+            return res.ok
+        } catch { return false }
+    }
+
+    const fetchSpotExportData = async () => {
+        if (!ensureAdminAuth()) return []
+        try {
+            const res = await fetch(`${ORDER_URL}/spot-export-data`, { headers: buildAdminAuthHeaders() })
+            if (!res.ok) return []
+            const data = await res.json()
+            return Array.isArray(data.orders) ? data.orders : []
+        } catch { return [] }
+    }
+
+    const shipSubOrder = async (orderId, subKey, tracking = {}) => {
+        if (!ensureAdminAuth()) return null
+        try {
+            const res = await fetch(`${ORDER_URL}/${orderId}/sub-orders/${encodeURIComponent(subKey)}/ship`, {
+                method: 'PUT',
+                headers: buildAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(tracking)
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                showNotification(data.error || '子订单发货失败')
+                return null
+            }
+            showNotification('子订单已发货')
+            return data
+        } catch {
+            showNotification('子订单发货失败')
+            return null
+        }
+    }
+
     return {
         state, cartCount, cartTotal, shippingFee, finalTotal,
         freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
@@ -1059,7 +1117,7 @@ export const useShopStore = () => {
         fetchProducts, addProduct, updateProduct, adjustProductMetrics, deleteProduct, reorderProducts, uploadImage,
         createOrderBackend, submitOrderPayment,
         fetchAdminOrders, updateOrderStatus, updateAdminOrderContact, deleteAdminOrder,
-        fetchOrderIds, markOrdersExported,
+        fetchOrderIds, markOrdersExported, markOrdersSpotExported, markPresaleExported, fetchSpotExportData, shipSubOrder,
         previewCoupon, fetchAdminCoupons, createCouponBatch, updateCouponStatus, deleteCoupon,
         submitContactMessage, fetchAdminContactMessages, updateAdminContactMessageStatus,
         fetchSiteConfig, updateSiteConfig,

@@ -101,6 +101,7 @@ app.use(bodyParser.json());
 app.use(apiPath('/uploads'), express.static(uploadDir));
 
 function safeParse(str, fallback) {
+    if (str == null || str === '') return fallback;
     try { return JSON.parse(str); } catch { return fallback; }
 }
 
@@ -377,9 +378,26 @@ const normalizeOrderMergeMeta = (rawValue) => {
     };
 };
 
-const mapOrderRow = (row) => {
+const mapOrderRow = (row, subOrderRows = null) => {
     if (!row) return null;
     const mergeMeta = normalizeOrderMergeMeta(row.mergeMeta);
+    const items = safeParse(row.items, []);
+    const hasPresaleItems = row.hasPresaleItems ? 1 : items.some(i => Boolean(i.isPresale)) ? 1 : 0;
+    const hasSpotItems = items.some(i => !i.isPresale);
+    const orderType = hasPresaleItems && hasSpotItems ? 'mixed' : (hasPresaleItems ? 'presale' : 'spot');
+    const presaleExportedProducts = safeParse(row.presaleExportedProducts, []);
+    const subOrders = subOrderRows
+        ? subOrderRows.map(s => ({
+            id: s.id,
+            subKey: s.subKey,
+            label: s.label,
+            items: safeParse(s.items, []),
+            trackingCompany: s.trackingCompany || '',
+            trackingNo: s.trackingNo || '',
+            shipped: s.shipped ? 1 : 0,
+            shipped_at: s.shipped_at || null
+        }))
+        : [];
     return {
         ...row,
         total: Number(row.total) || 0,
@@ -387,7 +405,12 @@ const mapOrderRow = (row) => {
         discountAmount: Number(row.discountAmount) || 0,
         status: Number(row.status),
         exported: row.exported ? 1 : 0,
-        items: safeParse(row.items, []),
+        spotExported: row.spotExported ? 1 : 0,
+        hasPresaleItems,
+        orderType,
+        presaleExportedProducts,
+        items,
+        subOrders,
         mergeMeta,
         contact: {
             name: row.contactName,
@@ -435,6 +458,29 @@ const emailService = createEmailService({
     orderQueryUrl: MAIL_ORDER_QUERY_URL,
     basePath: process.env.VITE_BASE_PATH || '/shop/'
 });
+
+const enqueueSubOrderEmailSafely = async (orderId, subKey) => {
+    try {
+        const order = await getOrderDetailById(orderId);
+        if (!order) return;
+        const subOrder = await dbGet(
+            'SELECT * FROM sub_orders WHERE orderId = ? AND subKey = ?',
+            [orderId, subKey]
+        );
+        if (!subOrder) return;
+        const subItems = safeParse(subOrder.items, []);
+        const emailOrder = {
+            ...order,
+            items: subItems,
+            trackingCompany: subOrder.trackingCompany || '',
+            trackingNo: subOrder.trackingNo || '',
+            _subOrderLabel: subOrder.label
+        };
+        await emailService.enqueueOrderEmail('order_shipped', emailOrder);
+    } catch (err) {
+        console.error('Failed to enqueue sub-order email:', err);
+    }
+};
 
 const enqueueOrderEmailSafely = async (eventKey, orderId) => {
     try {
@@ -1912,6 +1958,15 @@ app.get(apiPath('/orders'), requireAdminAuth, (req, res) => {
         params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
 
+    const hasPresale = String(req.query.hasPresale || '');
+    if (hasPresale === '1') {
+        conditions.push('hasPresaleItems = 1');
+    }
+    const hasSpot = String(req.query.hasSpot || '');
+    if (hasSpot === '1') {
+        conditions.push('hasSpotItems = 1');
+    }
+
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const offset = (page - 1) * pageSize;
 
@@ -1922,9 +1977,29 @@ app.get(apiPath('/orders'), requireAdminAuth, (req, res) => {
         const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1;
         const sql = `SELECT * FROM orders ${whereSql} ORDER BY ${orderByField} ${sortDir}, id DESC LIMIT ? OFFSET ?`;
 
-        db.all(sql, [...params, pageSize, offset], (err, rows) => {
+        db.all(sql, [...params, pageSize, offset], async (err, rows) => {
             if (err) return res.status(500).json({ error: err.message });
-            const orders = rows.map((row) => mapOrderRow(row));
+
+            // Eagerly load sub-orders for all orders on this page
+            const orderIds = rows.map(r => r.id);
+            let subOrdersByOrderId = {};
+            if (orderIds.length > 0) {
+                try {
+                    const placeholders = orderIds.map(() => '?').join(',');
+                    const subRows = await dbAll(
+                        `SELECT * FROM sub_orders WHERE orderId IN (${placeholders}) ORDER BY id ASC`,
+                        orderIds
+                    );
+                    for (const sr of subRows) {
+                        if (!subOrdersByOrderId[sr.orderId]) subOrdersByOrderId[sr.orderId] = [];
+                        subOrdersByOrderId[sr.orderId].push(sr);
+                    }
+                } catch (subErr) {
+                    console.error('Failed to load sub-orders:', subErr);
+                }
+            }
+
+            const orders = rows.map((row) => mapOrderRow(row, subOrdersByOrderId[row.id] || []));
             res.json({
                 items: orders,
                 pagination: { page, pageSize, total, totalPages },
@@ -1954,11 +2029,38 @@ app.get(apiPath('/orders/ids'), requireAdminAuth, (req, res) => {
         conditions.push('exported = ?');
         params.push(Number(exported) ? 1 : 0);
     }
-
+    const spotExported = req.query.spotExported;
+    if (spotExported !== undefined && spotExported !== '') {
+        conditions.push('spotExported = ?');
+        params.push(Number(spotExported) ? 1 : 0);
+    }
+    const hasPresale = req.query.hasPresale;
+    if (hasPresale !== undefined && hasPresale !== '') {
+        conditions.push('hasPresaleItems = ?');
+        params.push(Number(hasPresale) ? 1 : 0);
+    }
+    const notFullyExported = req.query.notFullyExported === '1';
+    const selectFields = notFullyExported ? 'id, items, exported, spotExported, presaleExportedProducts, hasPresaleItems, hasSpotItems' : 'id';
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    db.all(`SELECT id FROM orders ${whereSql}`, params, (err, rows) => {
+    db.all(`SELECT ${selectFields} FROM orders ${whereSql}`, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ ids: rows.map(r => r.id) });
+        if (!notFullyExported) {
+            return res.json({ ids: rows.map(r => r.id) });
+        }
+        // Application-level check: exclude only truly fully-exported orders
+        const ids = [];
+        for (const row of rows) {
+            const items = safeParse(row.items, []);
+            const hasSpot = items.some(i => !i.isPresale);
+            const presaleProductIds = [...new Set(items.filter(i => i.isPresale).map(i => Number(i.id)))];
+            const exportedPresale = safeParse(row.presaleExportedProducts, []);
+            const spotDone = !hasSpot || row.spotExported || row.exported;
+            const presaleDone = presaleProductIds.length === 0 || presaleProductIds.every(pid => exportedPresale.includes(pid));
+            if (!(spotDone && presaleDone)) {
+                ids.push(row.id);
+            }
+        }
+        res.json({ ids });
     });
 });
 
@@ -1973,6 +2075,195 @@ app.put(apiPath('/orders/mark-exported'), requireAdminAuth, async (req, res) => 
         await dbRun(`UPDATE orders SET exported = 1 WHERE id IN (${placeholders})`, ids);
         res.json({ success: true, count: ids.length });
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 批量标记订单现货商品已导出
+app.put(apiPath('/orders/mark-spot-exported'), requireAdminAuth, async (req, res) => {
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: '请提供订单 ID 列表' });
+    }
+    try {
+        for (const orderId of ids) {
+            const row = await dbGet('SELECT items, presaleExportedProducts FROM orders WHERE id = ?', [orderId]);
+            if (!row) continue;
+
+            const items = safeParse(row.items, []);
+            const exportedPresale = safeParse(row.presaleExportedProducts, []);
+            const allPresaleIds = [...new Set(items.filter(i => i.isPresale).map(i => Number(i.id)))];
+            const presaleDone = allPresaleIds.length === 0 || allPresaleIds.every(pid => exportedPresale.includes(pid));
+            const allExported = presaleDone ? 1 : 0;
+
+            await dbRun(
+                'UPDATE orders SET spotExported = 1, exported = CASE WHEN ? = 1 THEN 1 ELSE exported END WHERE id = ?',
+                [allExported, orderId]
+            );
+        }
+        res.json({ success: true, count: ids.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 标记预售商品已导出（按商品维度）
+app.put(apiPath('/orders/mark-presale-exported'), requireAdminAuth, async (req, res) => {
+    const { ids, productIds } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0 || !Array.isArray(productIds) || productIds.length === 0) {
+        return res.status(400).json({ error: '请提供订单 ID 列表和商品 ID 列表' });
+    }
+    try {
+        for (const orderId of ids) {
+            const row = await dbGet('SELECT items, presaleExportedProducts, spotExported, exported FROM orders WHERE id = ?', [orderId]);
+            if (!row) continue;
+
+            const existing = safeParse(row.presaleExportedProducts, []);
+            const merged = [...new Set([...existing, ...productIds.map(Number)])];
+
+            // Check if all items are now exported
+            const items = safeParse(row.items, []);
+            const allPresaleProductIds = [...new Set(items.filter(i => i.isPresale).map(i => Number(i.id)))];
+            const hasSpotItems = items.some(i => !i.isPresale);
+            const spotDone = !hasSpotItems || row.spotExported || row.exported;
+            const presaleDone = allPresaleProductIds.every(pid => merged.includes(pid));
+            const allExported = spotDone && presaleDone ? 1 : 0;
+
+            await dbRun(
+                'UPDATE orders SET presaleExportedProducts = ?, exported = CASE WHEN ? = 1 THEN 1 ELSE exported END WHERE id = ?',
+                [JSON.stringify(merged), allExported, orderId]
+            );
+        }
+        res.json({ success: true, count: ids.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 导出现货订单数据（返回订单列表，仅包含现货商品）
+app.get(apiPath('/orders/spot-export-data'), requireAdminAuth, async (req, res) => {
+    try {
+        // Fetch all 待发货 orders that haven't been spot-exported and contain spot items
+        const rows = await dbAll(
+            `SELECT * FROM orders WHERE status = 2 AND exported = 0 AND spotExported = 0 ORDER BY created_at DESC`
+        );
+        const result = [];
+        for (const row of rows) {
+            const items = safeParse(row.items, []);
+            const spotItems = items.filter(i => !i.isPresale);
+            if (spotItems.length === 0) continue; // pure presale, skip
+            result.push(mapOrderRow({ ...row, items: JSON.stringify(spotItems) }));
+        }
+        res.json({ orders: result });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 子订单发货
+app.put(apiPath('/orders/:id/sub-orders/:subKey/ship'), requireAdminAuth, async (req, res) => {
+    const orderId = String(req.params.id || '').trim();
+    const subKey = String(req.params.subKey || '').trim();
+    const { trackingCompany, trackingNo } = req.body || {};
+    let transactionStarted = false;
+
+    if (!orderId || !subKey) {
+        return res.status(400).json({ error: '参数不完整' });
+    }
+
+    try {
+        await dbRun('BEGIN IMMEDIATE TRANSACTION');
+        transactionStarted = true;
+
+        const order = await dbGet('SELECT id, status, contactEmail FROM orders WHERE id = ?', [orderId]);
+        if (!order) {
+            await dbRun('ROLLBACK');
+            return res.status(404).json({ error: '订单不存在' });
+        }
+        if (Number(order.status) !== 2) {
+            await dbRun('ROLLBACK');
+            return res.status(400).json({ error: '订单状态不允许发货' });
+        }
+
+        const subOrder = await dbGet(
+            'SELECT * FROM sub_orders WHERE orderId = ? AND subKey = ?',
+            [orderId, subKey]
+        );
+        if (!subOrder) {
+            await dbRun('ROLLBACK');
+            return res.status(404).json({ error: '子订单不存在' });
+        }
+        if (subOrder.shipped) {
+            await dbRun('ROLLBACK');
+            return res.status(400).json({ error: '该子订单已发货' });
+        }
+
+        const updateFields = ['shipped = 1', 'shipped_at = CURRENT_TIMESTAMP'];
+        const updateParams = [];
+        if (trackingCompany) {
+            updateFields.push('trackingCompany = ?');
+            updateParams.push(trackingCompany);
+        }
+        if (trackingNo) {
+            updateFields.push('trackingNo = ?');
+            updateParams.push(trackingNo);
+        }
+        updateParams.push(orderId, subKey);
+
+        await dbRun(
+            `UPDATE sub_orders SET ${updateFields.join(', ')} WHERE orderId = ? AND subKey = ?`,
+            updateParams
+        );
+
+        // Check if all sub-orders are now shipped
+        const unshippedCount = await dbGet(
+            'SELECT COUNT(*) AS cnt FROM sub_orders WHERE orderId = ? AND shipped = 0',
+            [orderId]
+        );
+
+        if (Number(unshippedCount?.cnt) === 0) {
+            // All sub-orders shipped — transition parent order to status 3
+            const lastShipped = await dbGet(
+                'SELECT trackingCompany, trackingNo FROM sub_orders WHERE orderId = ? ORDER BY shipped_at DESC LIMIT 1',
+                [orderId]
+            );
+            let parentUpdateSql = 'UPDATE orders SET status = 3';
+            const parentParams = [];
+            if (lastShipped?.trackingCompany && lastShipped?.trackingNo) {
+                parentUpdateSql += ', trackingCompany = ?, trackingNo = ?';
+                parentParams.push(lastShipped.trackingCompany, lastShipped.trackingNo);
+            }
+            parentUpdateSql += ' WHERE id = ?';
+            parentParams.push(orderId);
+            await dbRun(parentUpdateSql, parentParams);
+        }
+
+        await dbRun('COMMIT');
+        transactionStarted = false;
+
+        // Send sub-order shipped email
+        enqueueSubOrderEmailSafely(orderId, subKey);
+
+        const allSubOrders = await dbAll(
+            'SELECT * FROM sub_orders WHERE orderId = ? ORDER BY id ASC',
+            [orderId]
+        );
+
+        res.json({
+            success: true,
+            allShipped: Number(unshippedCount?.cnt) === 0,
+            subOrders: allSubOrders.map(s => ({
+                subKey: s.subKey,
+                label: s.label,
+                shipped: s.shipped ? 1 : 0,
+                trackingCompany: s.trackingCompany || '',
+                trackingNo: s.trackingNo || ''
+            }))
+        });
+    } catch (err) {
+        if (transactionStarted) {
+            try { await dbRun('ROLLBACK'); } catch {}
+        }
         res.status(500).json({ error: err.message });
     }
 });
@@ -2283,9 +2574,16 @@ app.post(apiPath('/orders'), async (req, res) => {
             await dbRun("UPDATE products SET stock = stock - ? WHERE id = ?", [totalQty, productId]);
         }
 
+        // Detect presale items
+        const presaleItems = finalPricedItems.filter(i => Boolean(i.isPresale));
+        const spotItems = finalPricedItems.filter(i => !i.isPresale);
+        const hasPresaleItemsFlag = presaleItems.length > 0 ? 1 : 0;
+        const hasSpotItemsFlag = spotItems.length > 0 ? 1 : 0;
+        const isMixedOrder = presaleItems.length > 0 && spotItems.length > 0;
+
         const sql = `INSERT INTO orders
-            (id, total, originalTotal, discountAmount, couponCode, mergeMeta, items, contactName, contactPhone, contactEmail, province, city, district, addressDetail, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            (id, total, originalTotal, discountAmount, couponCode, mergeMeta, items, contactName, contactPhone, contactEmail, province, city, district, addressDetail, status, hasPresaleItems, hasSpotItems)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         const params = [
             finalOrderId,
@@ -2302,10 +2600,31 @@ app.post(apiPath('/orders'), async (req, res) => {
             normalizedContact.contactCity,
             normalizedContact.contactDistrict,
             normalizedContact.contactAddressDetail,
-            1 // 状态1: 待付款
+            1, // 状态1: 待付款
+            hasPresaleItemsFlag,
+            hasSpotItemsFlag
         ];
 
         await dbRun(sql, params);
+
+        // Split mixed orders into sub-orders
+        if (isMixedOrder) {
+            // One sub-order for all spot items
+            await dbRun(
+                `INSERT INTO sub_orders (orderId, subKey, label, items) VALUES (?, ?, ?, ?)`,
+                [finalOrderId, 'spot', '现货包裹', JSON.stringify(spotItems)]
+            );
+            // One sub-order per presale item
+            for (const presaleItem of presaleItems) {
+                const productId = Number(presaleItem.id);
+                const subKey = `presale-${productId}`;
+                const label = `预售: ${presaleItem.name || '商品' + productId}`;
+                await dbRun(
+                    `INSERT INTO sub_orders (orderId, subKey, label, items) VALUES (?, ?, ?, ?)`,
+                    [finalOrderId, subKey, label, JSON.stringify([presaleItem])]
+                );
+            }
+        }
 
         if (sourceOrder && sourceCouponCode) {
             await dbRun(
@@ -2379,11 +2698,16 @@ app.post(apiPath('/orders'), async (req, res) => {
 });
 
 // 3. 按订单号查询单个订单 (前台用)
-app.get(apiPath('/orders/:id'), (req, res) => {
-    db.get("SELECT * FROM orders WHERE id = ?", [req.params.id], (err, orderRow) => {
-        if (err) return res.status(500).json({ error: err.message });
-        const order = mapOrderRow(orderRow);
-        if (!order) return res.status(404).json({ error: '订单不存在' });
+app.get(apiPath('/orders/:id'), async (req, res) => {
+    try {
+        const orderRow = await dbGet("SELECT * FROM orders WHERE id = ?", [req.params.id]);
+        if (!orderRow) return res.status(404).json({ error: '订单不存在' });
+
+        const subOrderRows = await dbAll(
+            'SELECT * FROM sub_orders WHERE orderId = ? ORDER BY id ASC',
+            [req.params.id]
+        );
+        const order = mapOrderRow(orderRow, subOrderRows);
 
         const adminPayload = verifyAdminToken(extractBearerToken(req));
         if (!adminPayload || adminPayload.role !== 'admin') {
@@ -2399,7 +2723,9 @@ app.get(apiPath('/orders/:id'), (req, res) => {
         }
 
         res.json(order);
-    });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // 修改订单收货信息：
@@ -2539,6 +2865,21 @@ app.put(apiPath('/orders/:id/status'), requireAdminAuth, async (req, res) => {
             return res.status(400).json({
                 error: `非法状态流转: ${oldStatus} -> ${newStatus}`
             });
+        }
+
+        // Block direct shipping for orders with sub-orders
+        if (newStatus === 3 && oldStatus === 2) {
+            const subCount = await dbGet(
+                'SELECT COUNT(*) AS cnt FROM sub_orders WHERE orderId = ?',
+                [orderId]
+            );
+            if (Number(subCount?.cnt) > 0) {
+                await dbRun('ROLLBACK');
+                transactionStarted = false;
+                return res.status(400).json({
+                    error: '该订单包含子订单，请通过子订单逐个发货'
+                });
+            }
         }
 
         if (newStatus !== oldStatus) {
@@ -2891,7 +3232,41 @@ app.get(apiPath('/admin/stats/conversion'), requireAdminAuth, async (req, res) =
     }
 });
 
+// One-time migration: populate hasPresaleItems / hasSpotItems for existing orders
+const migrateOrderTypeFlags = async () => {
+    try {
+        const cols = await dbAll('PRAGMA table_info(orders)');
+        const colNames = new Set(cols.map(c => c.name));
+        if (!colNames.has('hasPresaleItems') || !colNames.has('hasSpotItems')) return;
+
+        const rows = await dbAll('SELECT id, items, hasPresaleItems, hasSpotItems FROM orders');
+        let updated = 0;
+        for (const row of rows) {
+            const items = safeParse(row.items, []);
+            const hasPresale = items.some(i => Boolean(i.isPresale)) ? 1 : 0;
+            const hasSpot = items.some(i => !i.isPresale) ? 1 : 0;
+            const needsUpdate =
+                (hasPresale && !row.hasPresaleItems) ||
+                (!hasSpot && row.hasSpotItems);
+            if (needsUpdate) {
+                await dbRun(
+                    'UPDATE orders SET hasPresaleItems = ?, hasSpotItems = ? WHERE id = ?',
+                    [hasPresale, hasSpot, row.id]
+                );
+                updated++;
+            }
+        }
+        if (updated > 0) {
+            console.log(`Migration: updated order type flags for ${updated} orders`);
+        }
+    } catch (err) {
+        console.error('Migration order type flags failed:', err);
+    }
+};
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT} (API prefix: ${API_PREFIX})`);
     emailService.startWorker();
+    // Delay migration to ensure ensureColumn calls in db.cjs have completed
+    setTimeout(migrateOrderTypeFlags, 2000);
 });

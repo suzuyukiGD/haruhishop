@@ -11,6 +11,17 @@
         >
           {{ status.label }}
         </button>
+        <span class="filter-separator">|</span>
+        <button
+          class="filter-btn"
+          :class="{ active: filterItemType === 'spot' }"
+          @click="changeItemTypeFilter('spot')"
+        >仅现货</button>
+        <button
+          class="filter-btn"
+          :class="{ active: filterItemType === 'presale' }"
+          @click="changeItemTypeFilter('presale')"
+        >仅预售</button>
       </div>
       <div class="toolbar-query">
         <input v-model.trim="keyword" class="search-input" placeholder="按订单号/收货人/手机号搜索">
@@ -43,6 +54,18 @@
         <button class="admin-btn btn-green" :disabled="selectedCount === 0" @click="exportSelectedOrders">
           <i class="fa fa-download"></i> 导出所选
         </button>
+        <button class="admin-btn btn-green" :disabled="selectedCount === 0" @click="exportSpotOrders" title="导出所选订单中的现货商品（预售商品不导出，纯预售订单被跳过）">
+          <i class="fa fa-download"></i> 导出现货订单
+        </button>
+        <div class="presale-export-group">
+          <select v-model="presaleExportProductId" class="form-select compact-select presale-export-select">
+            <option value="all">全部预售商品</option>
+            <option v-for="p in presaleProductOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+          <button class="admin-btn btn-green" :disabled="selectedCount === 0" @click="exportPresaleOrders" title="导出所选订单中的预售商品（仅导出选定的预售商品）">
+            <i class="fa fa-download"></i> 导出预售订单
+          </button>
+        </div>
       </div>
     </div>
 
@@ -75,7 +98,11 @@
             <td>
               <div class="order-id">{{ order.id }}</div>
               <div class="text-sub">{{ new Date(order.created_at).toLocaleString() }}</div>
-              <div v-if="order.exported" class="exported-badge"><i class="fa fa-file-text-o"></i> 已导出发货单</div>
+              <span v-if="order.orderType === 'mixed'" class="order-type-badge type-mixed">混合订单</span>
+              <span v-else-if="order.orderType === 'presale'" class="order-type-badge type-presale">预售订单</span>
+              <div v-if="getExportTags(order).length" class="export-tags">
+                <span v-for="tag in getExportTags(order)" :key="tag.key" class="export-tag" :class="tag.cls">{{ tag.label }}</span>
+              </div>
               <div v-if="order.mergeMeta" class="merge-order-brief">
                 <div><strong>合并单（第 {{ getMergeCount(order.mergeMeta) }} 次）</strong></div>
                 <div class="merge-kv-row">
@@ -109,9 +136,27 @@
               </div>
             </td>
             <td>
-              <div v-for="(item, idx) in order.items" :key="idx" class="item-row">
-                {{ item.name }} <span style="color: #9ca3af;">x{{ item.quantity }}</span>
-              </div>
+              <template v-if="order.subOrders && order.subOrders.length > 0">
+                <div v-for="sub in order.subOrders" :key="sub.subKey" class="sub-order-block">
+                  <div class="sub-order-header">
+                    <span class="sub-order-label">{{ sub.label }}</span>
+                    <span v-if="sub.shipped" class="sub-shipped-badge"><i class="fa fa-check"></i> 已发货</span>
+                    <span v-else class="sub-pending-badge">待发货</span>
+                  </div>
+                  <div v-for="(item, idx) in sub.items" :key="idx" class="item-row">
+                    {{ item.name }} <span style="color: #9ca3af;">x{{ item.quantity }}</span>
+                  </div>
+                  <div v-if="sub.shipped && sub.trackingNo" class="text-sub" style="font-size: 0.72rem;">
+                    {{ sub.trackingCompany }} {{ sub.trackingNo }}
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div v-for="(item, idx) in order.items" :key="idx" class="item-row">
+                  {{ item.name }} <span style="color: #9ca3af;">x{{ item.quantity }}</span>
+                  <span v-if="item.isPresale" class="item-presale-tag">预售</span>
+                </div>
+              </template>
             </td>
             <td style="font-size: 0.85rem;">
               <div><strong>{{ order.contact.name }}</strong> {{ order.contact.phone }}</div>
@@ -124,21 +169,39 @@
               <span :class="['status-badge', 'status-' + order.status]">{{ getStatusLabel(order.status) }}</span>
             </td>
             <td style="text-align: center;">
-              <div style="display: flex; gap: 0.5rem; justify-content: center;">
-                <button class="admin-btn btn-outline" style="font-size: 0.75rem;" @click="openEditContact(order)">修改收货</button>
-                <template v-if="order.status === 1">
-                  <button class="admin-btn btn-blue" style="font-size: 0.75rem;" @click="updateStatus(order.id, 2)">收款</button>
-                  <button class="admin-btn btn-outline" style="font-size: 0.75rem; color: #ef4444;" @click="updateStatus(order.id, 0)">取消</button>
+              <div style="display: flex; flex-direction: column; gap: 0.4rem; align-items: center;">
+                <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                  <button class="admin-btn btn-outline" style="font-size: 0.75rem;" @click="openEditContact(order)">修改收货</button>
+                  <template v-if="order.status === 1">
+                    <button class="admin-btn btn-blue" style="font-size: 0.75rem;" @click="updateStatus(order.id, 2)">收款</button>
+                    <button class="admin-btn btn-outline" style="font-size: 0.75rem; color: #ef4444;" @click="updateStatus(order.id, 0)">取消</button>
+                  </template>
+                  <template v-if="order.status === 5">
+                    <button class="admin-btn btn-blue" style="font-size: 0.75rem;" @click="updateStatus(order.id, 2)">确认收款</button>
+                    <button class="admin-btn btn-outline order-delete-btn" style="font-size: 0.75rem;" @click="deletePendingOrder(order)">删除</button>
+                  </template>
+                  <template v-if="order.status === 2 && (!order.subOrders || order.subOrders.length === 0)">
+                    <button class="admin-btn btn-green" style="font-size: 0.75rem;" @click="openShip(order)">发货</button>
+                  </template>
+                  <span v-if="order.status === 0" style="color: #999; font-size: 0.75rem;">已取消 (库存已回滚)</span>
+                  <span v-if="order.status === 3 && (!order.subOrders || order.subOrders.length === 0)" style="color: #10b981; font-size: 0.75rem;">已发货</span>
+                </div>
+                <!-- Sub-order shipping buttons -->
+                <template v-if="order.status === 2 && order.subOrders && order.subOrders.length > 0">
+                  <div v-for="sub in order.subOrders" :key="sub.subKey" class="sub-ship-row">
+                    <template v-if="!sub.shipped">
+                      <button class="admin-btn btn-green" style="font-size: 0.72rem;" @click="openSubShip(order.id, sub)">
+                        发货: {{ sub.label }}
+                      </button>
+                    </template>
+                    <span v-else style="color: #10b981; font-size: 0.72rem;">
+                      <i class="fa fa-check"></i> {{ sub.label }}
+                    </span>
+                  </div>
                 </template>
-                <template v-if="order.status === 5">
-                  <button class="admin-btn btn-blue" style="font-size: 0.75rem;" @click="updateStatus(order.id, 2)">确认收款</button>
-                  <button class="admin-btn btn-outline order-delete-btn" style="font-size: 0.75rem;" @click="deletePendingOrder(order)">删除</button>
+                <template v-if="order.status === 3 && order.subOrders && order.subOrders.length > 0">
+                  <span style="color: #10b981; font-size: 0.75rem;">全部已发货</span>
                 </template>
-                <template v-if="order.status === 2">
-                  <button class="admin-btn btn-green" style="font-size: 0.75rem;" @click="openShip(order)">发货</button>
-                </template>
-                <span v-if="order.status === 0" style="color: #999; font-size: 0.75rem;">已取消 (库存已回滚)</span>
-                <span v-if="order.status === 3" style="color: #10b981; font-size: 0.75rem;">已发货</span>
               </div>
             </td>
           </tr>
@@ -155,6 +218,7 @@
       <button class="admin-btn btn-outline" :disabled="ordersMeta.page >= ordersMeta.totalPages" @click="goNextPage">下一页</button>
     </div>
 
+    <!-- Ship modal (for orders without sub-orders) -->
     <div v-if="shipModal.show" class="modal-overlay">
       <div class="modal-card">
         <h3 class="modal-title">订单发货</h3>
@@ -166,6 +230,27 @@
         <div class="modal-actions">
           <button @click="shipModal.show = false" class="admin-btn btn-outline">取消</button>
           <button @click="confirmShip" class="admin-btn btn-blue">确认发货</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-order ship modal -->
+    <div v-if="subShipModal.show" class="modal-overlay">
+      <div class="modal-card">
+        <h3 class="modal-title">子订单发货: {{ subShipModal.label }}</h3>
+        <div class="sub-ship-items">
+          <div v-for="(item, idx) in subShipModal.items" :key="idx" class="item-row">
+            {{ item.name }} <span style="color: #9ca3af;">x{{ item.quantity }}</span>
+          </div>
+        </div>
+        <label class="form-label">快递单号 (选填，可自动识别快递公司)</label>
+        <input v-model="subShipModal.no" type="text" class="form-input" placeholder="留空则不回填运单号">
+        <div v-if="subDetectedCompany" style="margin-top: 0.5rem; font-size: 0.85rem; color: #047857;">
+          <i class="fa fa-check-circle"></i> 识别为: {{ subDetectedCompany }}
+        </div>
+        <div class="modal-actions">
+          <button @click="subShipModal.show = false" class="admin-btn btn-outline">取消</button>
+          <button @click="confirmSubShip" class="admin-btn btn-blue">确认发货</button>
         </div>
       </div>
     </div>
@@ -221,6 +306,7 @@ import { useShopStore } from '@/stores/shopStore'
 
 const store = useShopStore()
 const filterStatus = ref('all')
+const filterItemType = ref('')
 const orders = computed(() => store.state.adminOrders)
 const ordersMeta = computed(() => store.state.adminOrdersMeta || { page: 1, pageSize: 20, total: 0, totalPages: 1 })
 const selectedOrderIds = ref(new Set())
@@ -229,6 +315,20 @@ const keyword = ref('')
 const sortBy = ref('created_at')
 const sortDir = ref('desc')
 const pageSize = ref(20)
+
+const presaleExportProductId = ref('all')
+
+const presaleProductOptions = computed(() => {
+  const map = new Map()
+  for (const order of orders.value) {
+    for (const item of (order.items || [])) {
+      if (item.isPresale && item.id && !map.has(item.id)) {
+        map.set(item.id, { id: item.id, name: item.name || `商品${item.id}` })
+      }
+    }
+  }
+  return [...map.values()]
+})
 
 const statusOptions = [
   { value: 'all', label: '全部' },
@@ -275,7 +375,7 @@ const toggleSelectAllPage = (checked) => {
 }
 
 const selectPendingUnexported = async () => {
-  const ids = await store.fetchOrderIds(2, 0)
+  const ids = await store.fetchOrderIds(2, undefined, { notFullyExported: true })
   if (ids.length === 0) {
     store.showNotification('没有未导出的待发货订单')
     return
@@ -304,7 +404,9 @@ const buildListFilters = (pageOverride = null) => ({
   sortBy: sortBy.value,
   sortDir: sortDir.value,
   page: pageOverride ?? ordersMeta.value.page ?? 1,
-  pageSize: pageSize.value
+  pageSize: pageSize.value,
+  hasPresale: filterItemType.value === 'presale' ? true : undefined,
+  hasSpot: filterItemType.value === 'spot' ? true : undefined
 })
 
 const loadOrders = async (page = 1) => {
@@ -313,6 +415,12 @@ const loadOrders = async (page = 1) => {
 
 const changeFilter = (status) => {
   filterStatus.value = status
+  clearSelection()
+  loadOrders(1)
+}
+
+const changeItemTypeFilter = (type) => {
+  filterItemType.value = filterItemType.value === type ? '' : type
   clearSelection()
   loadOrders(1)
 }
@@ -337,6 +445,40 @@ const goNextPage = () => {
 }
 
 const getStatusLabel = (s) => (['已取消', '待付款', '待发货', '已发货', '已完成', '待确认'][s] || '未知')
+const getExportTags = (order) => {
+  if (order.exported && order.orderType === 'spot') {
+    return [{ key: 'all', label: '已导出', cls: 'tag-done' }]
+  }
+  // For mixed/presale orders, show granular tags
+  const tags = []
+  const items = order.items || []
+  const hasSpot = items.some(i => !i.isPresale)
+  const presaleProductMap = new Map()
+  for (const item of items) {
+    if (item.isPresale && item.id && !presaleProductMap.has(Number(item.id))) {
+      presaleProductMap.set(Number(item.id), item.name || `商品${item.id}`)
+    }
+  }
+  const exportedPresale = Array.isArray(order.presaleExportedProducts) ? order.presaleExportedProducts : []
+
+  // Check if fully exported
+  const spotDone = !hasSpot || order.spotExported || order.exported
+  const presaleDone = presaleProductMap.size === 0 || [...presaleProductMap.keys()].every(pid => exportedPresale.includes(pid))
+  if (spotDone && presaleDone && (hasSpot || presaleProductMap.size > 0)) {
+    return [{ key: 'all', label: '已全部导出', cls: 'tag-done' }]
+  }
+
+  if (hasSpot && (order.spotExported || order.exported)) {
+    tags.push({ key: 'spot', label: '现货', cls: 'tag-spot' })
+  }
+  for (const [pid, name] of presaleProductMap) {
+    if (exportedPresale.includes(pid)) {
+      tags.push({ key: `p-${pid}`, label: name, cls: 'tag-presale' })
+    }
+  }
+  return tags
+}
+
 const getMergeParts = (mergeMeta = null) => {
   const parts = Array.isArray(mergeMeta?.parts) ? mergeMeta.parts : []
   return parts.slice(0, 4)
@@ -407,7 +549,7 @@ watch([orders, pagePartiallySelected], () => {
   }
 }, { immediate: true })
 
-// --- Ship modal ---
+// --- Ship modal (regular orders) ---
 const shipModal = reactive({ show: false, id: null, no: '' })
 const openShip = (order) => {
   shipModal.no = ''
@@ -439,6 +581,29 @@ const confirmShip = async () => {
   const tracking = no ? { trackingCompany: detectCompany(no), trackingNo: no } : {}
   const success = await store.updateOrderStatus(shipModal.id, 3, tracking, filterStatus.value, buildListFilters())
   if (success) shipModal.show = false
+}
+
+// --- Sub-order ship modal ---
+const subShipModal = reactive({ show: false, orderId: '', subKey: '', label: '', items: [], no: '' })
+const subDetectedCompany = computed(() => detectCompany(subShipModal.no))
+
+const openSubShip = (orderId, sub) => {
+  subShipModal.orderId = orderId
+  subShipModal.subKey = sub.subKey
+  subShipModal.label = sub.label
+  subShipModal.items = sub.items || []
+  subShipModal.no = ''
+  subShipModal.show = true
+}
+
+const confirmSubShip = async () => {
+  const no = subShipModal.no.trim()
+  const tracking = no ? { trackingCompany: detectCompany(no), trackingNo: no } : {}
+  const result = await store.shipSubOrder(subShipModal.orderId, subShipModal.subKey, tracking)
+  if (result) {
+    subShipModal.show = false
+    await loadOrders(ordersMeta.value.page)
+  }
 }
 
 // --- Edit contact modal ---
@@ -536,61 +701,7 @@ const toCsvCell = (value) => {
 const toAddressText = (contact = {}) => `${contact.province || ''}${contact.city || ''}${contact.district || ''}${contact.addressDetail || ''}`
 const toItemsText = (items = []) => items.map((item) => `${item.name} x${item.quantity}`).join('；')
 
-const exportSelectedOrders = async () => {
-  if (selectedCount.value === 0) {
-    alert('请先选择要导出的订单')
-    return
-  }
-
-  // Cross-page: collect orders that are on current page from selectedOrderIds
-  // For orders not on current page, we only have their IDs — export what we have
-  const currentPageSelected = orders.value.filter(o => selectedOrderIds.value.has(o.id))
-
-  const headers = ['订单号', '下单时间', '状态', '金额', '收货人', '联系电话', '邮箱', '收货地址', '商品明细', '物流公司', '物流单号']
-  const rows = currentPageSelected.map((order) => [
-    order.id,
-    new Date(order.created_at).toLocaleString(),
-    getStatusLabel(order.status),
-    order.total,
-    order.contact?.name || '',
-    order.contact?.phone || '',
-    order.contact?.email || '',
-    toAddressText(order.contact),
-    toItemsText(order.items),
-    order.trackingCompany || '',
-    order.trackingNo || ''
-  ])
-
-  // For cross-page orders not loaded on current page, fetch them all
-  const offPageIds = [...selectedOrderIds.value].filter(id => !pageVisibleIds.value.has(id))
-  if (offPageIds.length > 0) {
-    // Temporarily fetch full order data for off-page selections
-    const saved = { orders: [...store.state.adminOrders], meta: { ...store.state.adminOrdersMeta } }
-    for (const id of offPageIds) {
-      // Fetch individual order — use the list endpoint with keyword=id
-      await store.fetchAdminOrders('all', { keyword: id, page: 1, pageSize: 1 })
-      const found = store.state.adminOrders.find(o => o.id === id)
-      if (found) {
-        rows.push([
-          found.id,
-          new Date(found.created_at).toLocaleString(),
-          getStatusLabel(found.status),
-          found.total,
-          found.contact?.name || '',
-          found.contact?.phone || '',
-          found.contact?.email || '',
-          toAddressText(found.contact),
-          toItemsText(found.items),
-          found.trackingCompany || '',
-          found.trackingNo || ''
-        ])
-      }
-    }
-    // Restore current page data
-    store.state.adminOrders = saved.orders
-    store.state.adminOrdersMeta = saved.meta
-  }
-
+const downloadCsv = (rows, headers, filenamePrefix) => {
   const csv = [
     headers.map(toCsvCell).join(','),
     ...rows.map((row) => row.map(toCsvCell).join(','))
@@ -602,19 +713,192 @@ const exportSelectedOrders = async () => {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `orders-${stamp}.csv`
+  link.download = `${filenamePrefix}-${stamp}.csv`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+}
 
-  // Mark exported orders
+const orderToRow = (order, items = null) => [
+  order.id,
+  new Date(order.created_at).toLocaleString(),
+  getStatusLabel(order.status),
+  order.total,
+  order.contact?.name || '',
+  order.contact?.phone || '',
+  order.contact?.email || '',
+  toAddressText(order.contact),
+  toItemsText(items || order.items),
+  order.trackingCompany || '',
+  order.trackingNo || ''
+]
+
+const exportSelectedOrders = async () => {
+  if (selectedCount.value === 0) {
+    alert('请先选择要导出的订单')
+    return
+  }
+
+  const currentPageSelected = orders.value.filter(o => selectedOrderIds.value.has(o.id))
+
+  const headers = ['订单号', '下单时间', '状态', '金额', '收货人', '联系电话', '邮箱', '收货地址', '商品明细', '物流公司', '物流单号']
+  const rows = currentPageSelected.map((order) => orderToRow(order))
+
+  const offPageIds = [...selectedOrderIds.value].filter(id => !pageVisibleIds.value.has(id))
+  if (offPageIds.length > 0) {
+    const saved = { orders: [...store.state.adminOrders], meta: { ...store.state.adminOrdersMeta } }
+    for (const id of offPageIds) {
+      await store.fetchAdminOrders('all', { keyword: id, page: 1, pageSize: 1 })
+      const found = store.state.adminOrders.find(o => o.id === id)
+      if (found) rows.push(orderToRow(found))
+    }
+    store.state.adminOrders = saved.orders
+    store.state.adminOrdersMeta = saved.meta
+  }
+
+  downloadCsv(rows, headers, 'orders')
+
   const exportedIds = [...selectedOrderIds.value]
   await store.markOrdersExported(exportedIds)
 
-  // Refresh current page to show updated exported status
   await loadOrders(ordersMeta.value.page)
   store.showNotification(`已导出 ${rows.length} 单并标记为已导出`)
+}
+
+// --- Export spot orders ---
+const exportSpotOrders = async () => {
+  if (selectedCount.value === 0) {
+    alert('请先选择要导出的订单')
+    return
+  }
+
+  // Collect all selected orders (cross-page)
+  const allSelectedOrders = []
+  const currentPageSelected = orders.value.filter(o => selectedOrderIds.value.has(o.id))
+  allSelectedOrders.push(...currentPageSelected)
+
+  const offPageIds = [...selectedOrderIds.value].filter(id => !pageVisibleIds.value.has(id))
+  if (offPageIds.length > 0) {
+    const saved = { orders: [...store.state.adminOrders], meta: { ...store.state.adminOrdersMeta } }
+    for (const id of offPageIds) {
+      await store.fetchAdminOrders('all', { keyword: id, page: 1, pageSize: 1 })
+      const found = store.state.adminOrders.find(o => o.id === id)
+      if (found) allSelectedOrders.push(found)
+    }
+    store.state.adminOrders = saved.orders
+    store.state.adminOrdersMeta = saved.meta
+  }
+
+  // Filter: skip pure presale orders, export only spot items from each order
+  const headers = ['订单号', '下单时间', '状态', '金额', '收货人', '联系电话', '邮箱', '收货地址', '商品明细(现货)', '物流公司', '物流单号']
+  const rows = []
+  const pureSpotIds = []
+  const mixedIds = []
+
+  for (const order of allSelectedOrders) {
+    const spotItems = (order.items || []).filter(i => !i.isPresale)
+    if (spotItems.length === 0) continue // pure presale, skip
+
+    rows.push(orderToRow(order, spotItems))
+
+    if (order.orderType === 'mixed' || order.hasPresaleItems) {
+      mixedIds.push(order.id)
+    } else {
+      pureSpotIds.push(order.id)
+    }
+  }
+
+  if (rows.length === 0) {
+    store.showNotification('所选订单中没有包含现货商品的订单')
+    return
+  }
+
+  downloadCsv(rows, headers, 'spot-orders')
+
+  // Mark: pure spot -> exported, mixed -> spotExported
+  if (pureSpotIds.length > 0) {
+    await store.markOrdersExported(pureSpotIds)
+  }
+  if (mixedIds.length > 0) {
+    await store.markOrdersSpotExported(mixedIds)
+  }
+
+  await loadOrders(ordersMeta.value.page)
+  store.showNotification(`已导出 ${rows.length} 单现货订单`)
+}
+
+// --- Export presale orders ---
+const exportPresaleOrders = async () => {
+  if (selectedCount.value === 0) {
+    alert('请先选择要导出的订单')
+    return
+  }
+
+  const filterProductId = presaleExportProductId.value
+  const filterById = filterProductId !== 'all' ? Number(filterProductId) : null
+
+  // Collect all selected orders (cross-page)
+  const allSelectedOrders = []
+  const currentPageSelected = orders.value.filter(o => selectedOrderIds.value.has(o.id))
+  allSelectedOrders.push(...currentPageSelected)
+
+  const offPageIds = [...selectedOrderIds.value].filter(id => !pageVisibleIds.value.has(id))
+  if (offPageIds.length > 0) {
+    const saved = { orders: [...store.state.adminOrders], meta: { ...store.state.adminOrdersMeta } }
+    for (const id of offPageIds) {
+      await store.fetchAdminOrders('all', { keyword: id, page: 1, pageSize: 1 })
+      const found = store.state.adminOrders.find(o => o.id === id)
+      if (found) allSelectedOrders.push(found)
+    }
+    store.state.adminOrders = saved.orders
+    store.state.adminOrdersMeta = saved.meta
+  }
+
+  const headers = ['订单号', '下单时间', '状态', '金额', '收货人', '联系电话', '邮箱', '收货地址', '商品明细(预售)', '物流公司', '物流单号']
+  const rows = []
+
+  for (const order of allSelectedOrders) {
+    const presaleItems = (order.items || []).filter(i =>
+      i.isPresale && (filterById === null || Number(i.id) === filterById)
+    )
+    if (presaleItems.length === 0) continue
+
+    rows.push(orderToRow(order, presaleItems))
+  }
+
+  if (rows.length === 0) {
+    store.showNotification('所选订单中没有匹配的预售商品')
+    return
+  }
+
+  const suffix = filterById !== null
+    ? presaleProductOptions.value.find(p => p.id === filterById)?.name || '预售'
+    : '预售'
+  downloadCsv(rows, headers, `presale-${suffix}`)
+
+  // Collect exported product IDs and order IDs for marking
+  const exportedProductIds = []
+  const exportedOrderIds = []
+  for (const order of allSelectedOrders) {
+    const presaleItems = (order.items || []).filter(i =>
+      i.isPresale && (filterById === null || Number(i.id) === filterById)
+    )
+    if (presaleItems.length === 0) continue
+    exportedOrderIds.push(order.id)
+    for (const item of presaleItems) {
+      if (!exportedProductIds.includes(Number(item.id))) {
+        exportedProductIds.push(Number(item.id))
+      }
+    }
+  }
+
+  if (exportedOrderIds.length > 0 && exportedProductIds.length > 0) {
+    await store.markPresaleExported(exportedOrderIds, exportedProductIds)
+  }
+
+  await loadOrders(ordersMeta.value.page)
+  store.showNotification(`已导出 ${rows.length} 单预售订单`)
 }
 </script>
 
@@ -658,18 +942,147 @@ button:disabled {
   border-color: #fca5a5;
 }
 
-.exported-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.3rem;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 0.7rem;
+.export-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 0.25rem;
+}
+
+.export-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 0.63rem;
   font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.export-tag::before {
+  content: '\2713 ';
+}
+
+.tag-done {
   background: #ecfdf5;
   color: #047857;
   border: 1px solid #a7f3d0;
+}
+
+.tag-spot {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.tag-presale {
+  background: #ede9fe;
+  color: #5b21b6;
+  border: 1px solid #c4b5fd;
+}
+
+.order-type-badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.type-mixed {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.type-presale {
+  background: #ede9fe;
+  color: #5b21b6;
+  border: 1px solid #c4b5fd;
+}
+
+.item-presale-tag {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: #ede9fe;
+  color: #7c3aed;
+  vertical-align: middle;
+}
+
+.presale-export-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.presale-export-group .presale-export-select {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+  width: auto;
+  max-width: 150px;
+}
+
+.presale-export-group .admin-btn {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  white-space: nowrap;
+}
+
+.filter-separator {
+  color: #cbd5e1;
+  margin: 0 0.15rem;
+  user-select: none;
+}
+
+.sub-order-block {
+  padding: 0.35rem 0.45rem;
+  margin-bottom: 0.35rem;
+  border-radius: 5px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.sub-order-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.2rem;
+}
+
+.sub-order-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.sub-shipped-badge {
+  font-size: 0.68rem;
+  color: #10b981;
+  font-weight: 600;
+}
+
+.sub-pending-badge {
+  font-size: 0.68rem;
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.sub-ship-row {
+  width: 100%;
+}
+
+.sub-ship-items {
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.5rem;
+  border-radius: 5px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
 }
 
 .merge-order-brief {
