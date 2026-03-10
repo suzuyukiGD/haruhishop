@@ -34,6 +34,12 @@
       <div class="toolbar-actions">
         <span class="text-sub">已选 {{ selectedCount }} 单</span>
         <button class="admin-btn btn-outline" :disabled="selectedCount === 0" @click="clearSelection">清空选择</button>
+        <button class="admin-btn btn-outline" @click="selectPendingUnexported" title="勾选所有尚未导出发货单的待发货订单">
+          <i class="fa fa-check-square-o"></i> 未导出待发货
+        </button>
+        <button class="admin-btn btn-outline" @click="selectAllPending" title="勾选所有待发货订单">
+          <i class="fa fa-check-square-o"></i> 全部待发货
+        </button>
         <button class="admin-btn btn-green" :disabled="selectedCount === 0" @click="exportSelectedOrders">
           <i class="fa fa-download"></i> 导出所选
         </button>
@@ -48,9 +54,9 @@
               <input
                 ref="selectAllRef"
                 type="checkbox"
-                :checked="allSelected"
+                :checked="pageAllSelected"
                 :disabled="orders.length === 0"
-                @change="toggleSelectAll($event.target.checked)"
+                @change="toggleSelectAllPage($event.target.checked)"
               >
             </th>
             <th>订单号 / 时间</th>
@@ -69,6 +75,7 @@
             <td>
               <div class="order-id">{{ order.id }}</div>
               <div class="text-sub">{{ new Date(order.created_at).toLocaleString() }}</div>
+              <div v-if="order.exported" class="exported-badge"><i class="fa fa-file-text-o"></i> 已导出发货单</div>
               <div v-if="order.mergeMeta" class="merge-order-brief">
                 <div><strong>合并单（第 {{ getMergeCount(order.mergeMeta) }} 次）</strong></div>
                 <div class="merge-kv-row">
@@ -232,10 +239,17 @@ const statusOptions = [
   { value: 0, label: '已取消' }
 ]
 
-const selectedOrders = computed(() => orders.value.filter((order) => selectedOrderIds.value.has(order.id)))
-const selectedCount = computed(() => selectedOrders.value.length)
-const allSelected = computed(() => orders.value.length > 0 && selectedCount.value === orders.value.length)
-const partiallySelected = computed(() => selectedCount.value > 0 && selectedCount.value < orders.value.length)
+// --- Cross-page selection ---
+const selectedCount = computed(() => selectedOrderIds.value.size)
+
+const pageVisibleIds = computed(() => new Set(orders.value.map(o => o.id)))
+const pageSelectedCount = computed(() => {
+  let count = 0
+  pageVisibleIds.value.forEach(id => { if (selectedOrderIds.value.has(id)) count++ })
+  return count
+})
+const pageAllSelected = computed(() => orders.value.length > 0 && pageSelectedCount.value === orders.value.length)
+const pagePartiallySelected = computed(() => pageSelectedCount.value > 0 && pageSelectedCount.value < orders.value.length)
 
 const clearSelection = () => {
   selectedOrderIds.value = new Set()
@@ -250,14 +264,41 @@ const toggleSelectOrder = (orderId, checked) => {
   selectedOrderIds.value = next
 }
 
-const toggleSelectAll = (checked) => {
-  if (!checked) {
-    clearSelection()
-    return
+const toggleSelectAllPage = (checked) => {
+  const next = new Set(selectedOrderIds.value)
+  if (checked) {
+    orders.value.forEach(o => next.add(o.id))
+  } else {
+    orders.value.forEach(o => next.delete(o.id))
   }
-  selectedOrderIds.value = new Set(orders.value.map((order) => order.id))
+  selectedOrderIds.value = next
 }
 
+const selectPendingUnexported = async () => {
+  const ids = await store.fetchOrderIds(2, 0)
+  if (ids.length === 0) {
+    store.showNotification('没有未导出的待发货订单')
+    return
+  }
+  const next = new Set(selectedOrderIds.value)
+  ids.forEach(id => next.add(id))
+  selectedOrderIds.value = next
+  store.showNotification(`已勾选 ${ids.length} 单未导出待发货订单`)
+}
+
+const selectAllPending = async () => {
+  const ids = await store.fetchOrderIds(2)
+  if (ids.length === 0) {
+    store.showNotification('没有待发货订单')
+    return
+  }
+  const next = new Set(selectedOrderIds.value)
+  ids.forEach(id => next.add(id))
+  selectedOrderIds.value = next
+  store.showNotification(`已勾选 ${ids.length} 单待发货订单`)
+}
+
+// --- Data loading ---
 const buildListFilters = (pageOverride = null) => ({
   keyword: keyword.value,
   sortBy: sortBy.value,
@@ -267,12 +308,12 @@ const buildListFilters = (pageOverride = null) => ({
 })
 
 const loadOrders = async (page = 1) => {
-  clearSelection()
   await store.fetchAdminOrders(filterStatus.value, buildListFilters(page))
 }
 
 const changeFilter = (status) => {
   filterStatus.value = status
+  clearSelection()
   loadOrders(1)
 }
 
@@ -281,6 +322,7 @@ onMounted(() => {
 })
 
 const searchOrders = () => {
+  clearSelection()
   loadOrders(1)
 }
 
@@ -358,21 +400,14 @@ const deletePendingOrder = async (order) => {
   await store.deleteAdminOrder(order.id, filterStatus.value, buildListFilters())
 }
 
-watch([orders, partiallySelected], () => {
+// --- Select-all checkbox indeterminate state ---
+watch([orders, pagePartiallySelected], () => {
   if (selectAllRef.value) {
-    selectAllRef.value.indeterminate = partiallySelected.value
+    selectAllRef.value.indeterminate = pagePartiallySelected.value
   }
 }, { immediate: true })
 
-watch(orders, (currentOrders) => {
-  const visibleIds = new Set(currentOrders.map((order) => order.id))
-  const next = new Set()
-  selectedOrderIds.value.forEach((id) => {
-    if (visibleIds.has(id)) next.add(id)
-  })
-  selectedOrderIds.value = next
-})
-
+// --- Ship modal ---
 const shipModal = reactive({ show: false, id: null, no: '' })
 const openShip = (order) => {
   shipModal.no = ''
@@ -406,6 +441,7 @@ const confirmShip = async () => {
   if (success) shipModal.show = false
 }
 
+// --- Edit contact modal ---
 const editContactModal = reactive({
   show: false,
   id: '',
@@ -490,6 +526,7 @@ const confirmEditContact = async () => {
   }
 }
 
+// --- Export ---
 const toCsvCell = (value) => {
   if (value === null || value === undefined) return ''
   const text = String(value).replace(/"/g, '""')
@@ -499,14 +536,18 @@ const toCsvCell = (value) => {
 const toAddressText = (contact = {}) => `${contact.province || ''}${contact.city || ''}${contact.district || ''}${contact.addressDetail || ''}`
 const toItemsText = (items = []) => items.map((item) => `${item.name} x${item.quantity}`).join('；')
 
-const exportSelectedOrders = () => {
+const exportSelectedOrders = async () => {
   if (selectedCount.value === 0) {
     alert('请先选择要导出的订单')
     return
   }
 
+  // Cross-page: collect orders that are on current page from selectedOrderIds
+  // For orders not on current page, we only have their IDs — export what we have
+  const currentPageSelected = orders.value.filter(o => selectedOrderIds.value.has(o.id))
+
   const headers = ['订单号', '下单时间', '状态', '金额', '收货人', '联系电话', '邮箱', '收货地址', '商品明细', '物流公司', '物流单号']
-  const rows = selectedOrders.value.map((order) => [
+  const rows = currentPageSelected.map((order) => [
     order.id,
     new Date(order.created_at).toLocaleString(),
     getStatusLabel(order.status),
@@ -519,6 +560,36 @@ const exportSelectedOrders = () => {
     order.trackingCompany || '',
     order.trackingNo || ''
   ])
+
+  // For cross-page orders not loaded on current page, fetch them all
+  const offPageIds = [...selectedOrderIds.value].filter(id => !pageVisibleIds.value.has(id))
+  if (offPageIds.length > 0) {
+    // Temporarily fetch full order data for off-page selections
+    const saved = { orders: [...store.state.adminOrders], meta: { ...store.state.adminOrdersMeta } }
+    for (const id of offPageIds) {
+      // Fetch individual order — use the list endpoint with keyword=id
+      await store.fetchAdminOrders('all', { keyword: id, page: 1, pageSize: 1 })
+      const found = store.state.adminOrders.find(o => o.id === id)
+      if (found) {
+        rows.push([
+          found.id,
+          new Date(found.created_at).toLocaleString(),
+          getStatusLabel(found.status),
+          found.total,
+          found.contact?.name || '',
+          found.contact?.phone || '',
+          found.contact?.email || '',
+          toAddressText(found.contact),
+          toItemsText(found.items),
+          found.trackingCompany || '',
+          found.trackingNo || ''
+        ])
+      }
+    }
+    // Restore current page data
+    store.state.adminOrders = saved.orders
+    store.state.adminOrdersMeta = saved.meta
+  }
 
   const csv = [
     headers.map(toCsvCell).join(','),
@@ -536,6 +607,14 @@ const exportSelectedOrders = () => {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+
+  // Mark exported orders
+  const exportedIds = [...selectedOrderIds.value]
+  await store.markOrdersExported(exportedIds)
+
+  // Refresh current page to show updated exported status
+  await loadOrders(ordersMeta.value.page)
+  store.showNotification(`已导出 ${rows.length} 单并标记为已导出`)
 }
 </script>
 
@@ -577,6 +656,20 @@ button:disabled {
 .order-delete-btn {
   color: #ef4444;
   border-color: #fca5a5;
+}
+
+.exported-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
 }
 
 .merge-order-brief {

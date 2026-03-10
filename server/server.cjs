@@ -386,6 +386,7 @@ const mapOrderRow = (row) => {
         originalTotal: Number(row.originalTotal) || 0,
         discountAmount: Number(row.discountAmount) || 0,
         status: Number(row.status),
+        exported: row.exported ? 1 : 0,
         items: safeParse(row.items, []),
         mergeMeta,
         contact: {
@@ -1932,6 +1933,48 @@ app.get(apiPath('/orders'), requireAdminAuth, (req, res) => {
             });
         });
     });
+});
+
+// 获取指定状态的所有订单 ID（用于跨页批量勾选）
+app.get(apiPath('/orders/ids'), requireAdminAuth, (req, res) => {
+    const status = String(req.query.status || 'all');
+    const exported = req.query.exported;
+
+    const conditions = [];
+    const params = [];
+    if (status !== 'all') {
+        const numericStatus = Number(status);
+        if (!ORDER_STATUS_VALUES.includes(numericStatus)) {
+            return res.status(400).json({ error: 'status 参数无效' });
+        }
+        conditions.push('status = ?');
+        params.push(numericStatus);
+    }
+    if (exported !== undefined && exported !== '') {
+        conditions.push('exported = ?');
+        params.push(Number(exported) ? 1 : 0);
+    }
+
+    const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    db.all(`SELECT id FROM orders ${whereSql}`, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ ids: rows.map(r => r.id) });
+    });
+});
+
+// 批量标记订单为已导出
+app.put(apiPath('/orders/mark-exported'), requireAdminAuth, async (req, res) => {
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: '请提供订单 ID 列表' });
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    try {
+        await dbRun(`UPDATE orders SET exported = 1 WHERE id IN (${placeholders})`, ids);
+        res.json({ success: true, count: ids.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // 1.1 总览看板聚合数据

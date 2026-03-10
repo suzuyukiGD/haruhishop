@@ -1027,6 +1027,31 @@ export const useShopStore = () => {
         }
     }
 
+    const fetchOrderIds = async (status, exported) => {
+        if (!ensureAdminAuth()) return []
+        const search = new URLSearchParams()
+        search.set('status', String(status))
+        if (exported !== undefined) search.set('exported', String(exported))
+        try {
+            const res = await fetch(`${ORDER_URL}/ids?${search.toString()}`, { headers: buildAdminAuthHeaders() })
+            if (!res.ok) return []
+            const data = await res.json()
+            return Array.isArray(data.ids) ? data.ids : []
+        } catch { return [] }
+    }
+
+    const markOrdersExported = async (ids) => {
+        if (!ensureAdminAuth() || !ids.length) return false
+        try {
+            const res = await fetch(`${ORDER_URL}/mark-exported`, {
+                method: 'PUT',
+                headers: buildAdminAuthHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ ids })
+            })
+            return res.ok
+        } catch { return false }
+    }
+
     return {
         state, cartCount, cartTotal, shippingFee, finalTotal,
         freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
@@ -1034,6 +1059,7 @@ export const useShopStore = () => {
         fetchProducts, addProduct, updateProduct, adjustProductMetrics, deleteProduct, reorderProducts, uploadImage,
         createOrderBackend, submitOrderPayment,
         fetchAdminOrders, updateOrderStatus, updateAdminOrderContact, deleteAdminOrder,
+        fetchOrderIds, markOrdersExported,
         previewCoupon, fetchAdminCoupons, createCouponBatch, updateCouponStatus, deleteCoupon,
         submitContactMessage, fetchAdminContactMessages, updateAdminContactMessageStatus,
         fetchSiteConfig, updateSiteConfig,

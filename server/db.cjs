@@ -165,6 +165,7 @@ db.serialize(() => {
     ensureColumn('products', 'presaleFixedDateType', 'TEXT');
     ensureColumn('products', 'presaleFixedDateValue', 'TEXT');
     ensureColumn('products', 'presalePaidOffset', 'INTEGER DEFAULT 0');
+    ensureColumn('orders', 'exported', 'INTEGER DEFAULT 0');
 });
 
 module.exports = db;
