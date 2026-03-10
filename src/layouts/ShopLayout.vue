@@ -204,8 +204,54 @@
                 class="nonprofit-tooltip-mobile"
                 role="tooltip"
             >
-                “非营利”不等于“非盈利”，是不以利润分配为目的，所获利润用于团内。
+                "非营利"不等于"非盈利"，是不以利润分配为目的，所获利润用于团内。
             </div>
+        </transition>
+    </teleport>
+
+    <!-- Mobile floating cart -->
+    <teleport to="body">
+        <transition name="fade">
+            <div v-if="showCartFab && cartPopupOpen" class="cart-popup-backdrop" @click="cartPopupOpen = false"></div>
+        </transition>
+    </teleport>
+    <teleport to="body">
+        <transition name="cart-panel">
+            <div v-if="showCartFab && cartPopupOpen" class="cart-popup-panel">
+                <div class="cart-popup-header">
+                    <span><i class="fa fa-shopping-cart mr-2"></i>购物车 · {{ cartCount }}件</span>
+                </div>
+                <div class="cart-popup-items custom-scrollbar">
+                    <div v-for="item in state.cart" :key="item.id" class="cart-popup-item">
+                        <img :src="item.image" class="cart-popup-img" alt="">
+                        <div class="cart-popup-info">
+                            <div class="cart-popup-name">{{ item.name }}</div>
+                            <div class="cart-popup-meta">
+                                <span class="cart-popup-price">¥{{ item.price }}</span>
+                                <span class="cart-popup-qty">× {{ item.quantity }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="cart-popup-footer">
+                    <div class="cart-popup-total">
+                        <span>合计</span>
+                        <span class="cart-popup-total-price">¥{{ store.cartTotal }}</span>
+                    </div>
+                    <button class="cart-popup-checkout" @click="goToCartFromPopup">
+                        去购物车结算 <i class="fa fa-arrow-right ml-2"></i>
+                    </button>
+                </div>
+            </div>
+        </transition>
+    </teleport>
+    <teleport to="body">
+        <transition name="cart-fab">
+            <button v-if="showCartFab" class="cart-fab" :class="{ 'is-open': cartPopupOpen }" @click.stop="toggleCartPopup">
+                <i class="fa fa-shopping-cart cart-fab-cart"></i>
+                <i class="fa fa-times cart-fab-close"></i>
+                <span class="cart-fab-badge">{{ cartCount }}</span>
+            </button>
         </transition>
     </teleport>
   </div>
@@ -232,10 +278,18 @@ const nonprofitTermRef = ref(null)
 const nonprofitTooltipPanelRef = ref(null)
 const nonprofitTooltipOpen = ref(false)
 const isMobileViewport = ref(false)
+const cartPopupOpen = ref(false)
 
 const isHomePage = computed(() => route.name === 'home')
 const isDetailPage = computed(() => route.name === 'product')
 const currentType = computed(() => state.currentType)
+const showCartFab = computed(() =>
+    isMobileViewport.value &&
+    cartCount.value > 0 &&
+    route.name !== 'cart' &&
+    route.name !== 'checkout' &&
+    route.name !== 'payment'
+)
 
 const mobileHeaderActions = computed(() => {
     if (isDetailPage.value) {
@@ -271,6 +325,15 @@ const toggleFilterExpand = () => {
     isFilterExpanded.value = !isFilterExpanded.value
 }
 
+const toggleCartPopup = () => {
+    cartPopupOpen.value = !cartPopupOpen.value
+}
+
+const goToCartFromPopup = () => {
+    cartPopupOpen.value = false
+    router.push('/cart')
+}
+
 const toggleNonprofitTooltip = () => {
     nonprofitTooltipOpen.value = !nonprofitTooltipOpen.value
 }
@@ -297,6 +360,7 @@ watch(
     () => {
         mobileMenuOpen.value = false
         nonprofitTooltipOpen.value = false
+        cartPopupOpen.value = false
     }
 )
 
