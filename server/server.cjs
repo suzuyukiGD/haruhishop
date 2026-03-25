@@ -2268,6 +2268,200 @@ app.put(apiPath('/orders/:id/sub-orders/:subKey/ship'), requireAdminAuth, async 
     }
 });
 
+// 导入带有快递单号的CSV，自动回填并发货
+app.post(apiPath('/orders/import-tracking'), requireAdminAuth, upload.single('file'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: '请上传 CSV 文件' });
+    }
+
+    try {
+        const csvContent = fs.readFileSync(req.file.path, 'utf-8');
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+
+        // Parse CSV (handle quoted fields with newlines)
+        const parseCSVLine = (line) => {
+            const fields = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (inQuotes) {
+                    if (ch === '"' && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else if (ch === '"') {
+                        inQuotes = false;
+                    } else {
+                        current += ch;
+                    }
+                } else {
+                    if (ch === '"') {
+                        inQuotes = true;
+                    } else if (ch === ',') {
+                        fields.push(current.trim());
+                        current = '';
+                    } else {
+                        current += ch;
+                    }
+                }
+            }
+            fields.push(current.trim());
+            return fields;
+        };
+
+        // Split on newlines, but respect quoted fields containing newlines
+        const records = [];
+        let currentRecord = '';
+        let inQuotes = false;
+        for (const ch of csvContent) {
+            if (ch === '"') inQuotes = !inQuotes;
+            if ((ch === '\n' || ch === '\r') && !inQuotes) {
+                if (currentRecord.trim()) records.push(currentRecord.trim());
+                currentRecord = '';
+            } else {
+                currentRecord += ch;
+            }
+        }
+        if (currentRecord.trim()) records.push(currentRecord.trim());
+
+        if (records.length < 2) {
+            return res.status(400).json({ error: 'CSV 文件格式错误或没有数据' });
+        }
+
+        // Parse header to find column indices
+        const header = parseCSVLine(records[0]);
+        const colOrderId = header.indexOf('订单号');
+        const colTrackingCompany = header.indexOf('物流公司');
+        const colTrackingNo = header.indexOf('物流单号');
+        // 商品明细 column — may be 商品明细, 商品明细(现货), 商品明细(预售) etc.
+        const colItems = header.findIndex(h => h.startsWith('商品明细'));
+
+        if (colOrderId < 0 || colTrackingNo < 0) {
+            return res.status(400).json({ error: 'CSV 缺少必要的列: 订单号, 物流单号' });
+        }
+
+        const results = { success: 0, skipped: 0, errors: [], details: [] };
+
+        for (let i = 1; i < records.length; i++) {
+            const fields = parseCSVLine(records[i]);
+            const orderId = (fields[colOrderId] || '').trim();
+            const trackingCompany = colTrackingCompany >= 0 ? (fields[colTrackingCompany] || '').trim() : '';
+            const trackingNo = (fields[colTrackingNo] || '').trim();
+            const csvItemsText = colItems >= 0 ? (fields[colItems] || '').trim() : '';
+
+            if (!orderId || !trackingNo) {
+                results.skipped++;
+                continue;
+            }
+
+            try {
+                const order = await dbGet('SELECT id, status, items FROM orders WHERE id = ?', [orderId]);
+                if (!order) {
+                    results.errors.push(`${orderId}: 订单不存在`);
+                    continue;
+                }
+                if (Number(order.status) !== 2) {
+                    results.skipped++;
+                    results.details.push(`${orderId}: 跳过(状态非待发货)`);
+                    continue;
+                }
+
+                const subOrders = await dbAll(
+                    'SELECT * FROM sub_orders WHERE orderId = ? ORDER BY id ASC',
+                    [orderId]
+                );
+
+                if (subOrders.length === 0) {
+                    // No sub-orders: directly update order tracking and set status=3
+                    await dbRun(
+                        'UPDATE orders SET trackingCompany = ?, trackingNo = ?, status = 3 WHERE id = ?',
+                        [trackingCompany, trackingNo, orderId]
+                    );
+                    enqueueOrderEmailSafely('order_shipped', orderId);
+                    results.success++;
+                    results.details.push(`${orderId}: 已发货`);
+                } else {
+                    // Has sub-orders: match CSV items to the right sub-order
+                    // Parse CSV item names: "凉宫春日的花见 x1；长门有希fufu x2" -> ["凉宫春日的花见", "长门有希fufu"]
+                    const csvItemNames = csvItemsText
+                        ? csvItemsText.split(/[；;]/).map(s => s.replace(/\s*x\d+\s*$/i, '').trim()).filter(Boolean)
+                        : [];
+
+                    let matchedSubOrder = null;
+
+                    if (csvItemNames.length > 0) {
+                        // Score each sub-order by how many CSV item names match
+                        let bestScore = 0;
+                        for (const sub of subOrders) {
+                            if (sub.shipped) continue;
+                            const subItems = safeParse(sub.items, []);
+                            const subItemNames = subItems.map(it => it.name || '');
+                            // Count bidirectional matches
+                            const csvInSub = csvItemNames.filter(n => subItemNames.some(sn => sn === n || sn.includes(n) || n.includes(sn))).length;
+                            const subInCsv = subItemNames.filter(sn => csvItemNames.some(n => sn === n || sn.includes(n) || n.includes(sn))).length;
+                            const score = csvInSub + subInCsv;
+                            if (score > bestScore) {
+                                bestScore = score;
+                                matchedSubOrder = sub;
+                            }
+                        }
+                    }
+
+                    if (!matchedSubOrder) {
+                        // Fallback: if only one unshipped sub-order, use it
+                        const unshipped = subOrders.filter(s => !s.shipped);
+                        if (unshipped.length === 1) {
+                            matchedSubOrder = unshipped[0];
+                        }
+                    }
+
+                    if (!matchedSubOrder) {
+                        results.errors.push(`${orderId}: 无法匹配子订单包裹`);
+                        continue;
+                    }
+
+                    // Ship the matched sub-order (inline logic to avoid HTTP self-call)
+                    await dbRun('BEGIN IMMEDIATE TRANSACTION');
+                    try {
+                        await dbRun(
+                            `UPDATE sub_orders SET shipped = 1, shipped_at = CURRENT_TIMESTAMP,
+                             trackingCompany = ?, trackingNo = ? WHERE orderId = ? AND subKey = ?`,
+                            [trackingCompany, trackingNo, orderId, matchedSubOrder.subKey]
+                        );
+
+                        const unshippedCount = await dbGet(
+                            'SELECT COUNT(*) AS cnt FROM sub_orders WHERE orderId = ? AND shipped = 0',
+                            [orderId]
+                        );
+
+                        if (Number(unshippedCount?.cnt) === 0) {
+                            await dbRun(
+                                'UPDATE orders SET status = 3, trackingCompany = ?, trackingNo = ? WHERE id = ?',
+                                [trackingCompany, trackingNo, orderId]
+                            );
+                        }
+
+                        await dbRun('COMMIT');
+                        enqueueSubOrderEmailSafely(orderId, matchedSubOrder.subKey);
+                        results.success++;
+                        results.details.push(`${orderId}: ${matchedSubOrder.label} 已发货`);
+                    } catch (subErr) {
+                        try { await dbRun('ROLLBACK'); } catch {}
+                        results.errors.push(`${orderId}: ${subErr.message}`);
+                    }
+                }
+            } catch (orderErr) {
+                results.errors.push(`${orderId}: ${orderErr.message}`);
+            }
+        }
+
+        res.json(results);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // 1.1 总览看板聚合数据
 app.get(apiPath('/admin/dashboard-summary'), requireAdminAuth, async (req, res) => {
     try {

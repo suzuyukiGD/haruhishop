@@ -66,6 +66,26 @@
             <i class="fa fa-download"></i> 导出预售订单
           </button>
         </div>
+        <input type="file" ref="importFileRef" accept=".csv" style="display:none" @change="handleImportFile">
+        <button class="admin-btn btn-outline" @click="$refs.importFileRef.click()" title="导入带有物流单号的CSV文件，自动匹配包裹并发货">
+          <i class="fa fa-upload"></i> 导入发货单
+        </button>
+      </div>
+    </div>
+
+    <div v-if="importResult" class="import-result-panel">
+      <div class="import-result-header">
+        <strong>导入结果</strong>
+        <button class="admin-btn btn-outline" style="padding:2px 8px;font-size:0.75rem;" @click="importResult = null">关闭</button>
+      </div>
+      <div class="import-result-summary">
+        成功 <strong>{{ importResult.success }}</strong> 单，跳过 {{ importResult.skipped }} 单，失败 {{ importResult.errors?.length || 0 }} 单
+      </div>
+      <div v-if="importResult.details?.length" class="import-result-details">
+        <div v-for="(d, i) in importResult.details" :key="i" class="import-detail-line">{{ d }}</div>
+      </div>
+      <div v-if="importResult.errors?.length" class="import-result-errors">
+        <div v-for="(e, i) in importResult.errors" :key="i" class="import-error-line">{{ e }}</div>
       </div>
     </div>
 
@@ -317,6 +337,8 @@ const sortDir = ref('desc')
 const pageSize = ref(20)
 
 const presaleExportProductId = ref('all')
+const importFileRef = ref(null)
+const importResult = ref(null)
 
 const presaleProductOptions = computed(() => {
   const map = new Map()
@@ -900,9 +922,68 @@ const exportPresaleOrders = async () => {
   await loadOrders(ordersMeta.value.page)
   store.showNotification(`已导出 ${rows.length} 单预售订单`)
 }
+
+// --- Import tracking CSV ---
+const handleImportFile = async (e) => {
+  const file = e.target.files?.[0]
+  if (!file) return
+  // Reset so same file can be re-selected
+  e.target.value = ''
+
+  importResult.value = null
+  store.showNotification('正在导入发货单...')
+  const result = await store.importTracking(file)
+  if (!result) {
+    store.showNotification('导入失败')
+    return
+  }
+  if (result.error) {
+    store.showNotification(`导入失败: ${result.error}`)
+    return
+  }
+  importResult.value = result
+  await loadOrders(ordersMeta.value.page)
+  store.showNotification(`导入完成: 成功 ${result.success} 单`)
+}
 </script>
 
 <style scoped>
+.import-result-panel {
+  margin: 0.5rem 0;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #f9fafb;
+  font-size: 0.8rem;
+}
+
+.import-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.import-result-summary {
+  margin-bottom: 0.3rem;
+}
+
+.import-result-details,
+.import-result-errors {
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.import-detail-line {
+  color: #047857;
+}
+
+.import-error-line {
+  color: #dc2626;
+}
+
 .toolbar-actions {
   display: flex;
   align-items: center;

@@ -1110,6 +1110,20 @@ export const useShopStore = () => {
         }
     }
 
+    const importTracking = async (file) => {
+        if (!ensureAdminAuth() || !file) return null
+        try {
+            const form = new FormData()
+            form.append('file', file)
+            const res = await fetch(`${ORDER_URL}/import-tracking`, {
+                method: 'POST',
+                headers: buildAdminAuthHeaders(),
+                body: form
+            })
+            return await res.json()
+        } catch { return null }
+    }
+
     return {
         state, cartCount, cartTotal, shippingFee, finalTotal,
         freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
@@ -1117,7 +1131,7 @@ export const useShopStore = () => {
         fetchProducts, addProduct, updateProduct, adjustProductMetrics, deleteProduct, reorderProducts, uploadImage,
         createOrderBackend, submitOrderPayment,
         fetchAdminOrders, updateOrderStatus, updateAdminOrderContact, deleteAdminOrder,
-        fetchOrderIds, markOrdersExported, markOrdersSpotExported, markPresaleExported, fetchSpotExportData, shipSubOrder,
+        fetchOrderIds, markOrdersExported, markOrdersSpotExported, markPresaleExported, fetchSpotExportData, shipSubOrder, importTracking,
         previewCoupon, fetchAdminCoupons, createCouponBatch, updateCouponStatus, deleteCoupon,
         submitContactMessage, fetchAdminContactMessages, updateAdminContactMessageStatus,
         fetchSiteConfig, updateSiteConfig,
