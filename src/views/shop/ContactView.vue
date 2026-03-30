@@ -54,13 +54,13 @@ const submitMessage = async () => {
         <ul class="contact-list" style="list-style: none; padding: 0; font-size: 0.875rem; line-height: 2;">
           <li class="contact-item contact-item-email">
             <i class="fa fa-envelope mr-2"></i>
-            <span class="contact-email-text">haruhifanclub@outlook.com</span>
+            <span class="contact-email-text">haruhifanclubGDB@outlook.com</span>
           </li>
-          <li class="contact-item"><i class="fa-brands fa-weixin mr-2" style="color: #07c160;"></i> haruhiism15532</li>
+          <li class="contact-item"><i class="fa-brands fa-weixin mr-2" style="color: #07c160;"></i> TCXY0727__</li>
         </ul>
       </div>
       <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.2); opacity: 0.6; font-size: 0.75rem;">
-        &copy; 凉宫春日应援团
+        &copy; 凉宫春日应援团广东支部
       </div>
     </div>
     <div class="contact-form">
