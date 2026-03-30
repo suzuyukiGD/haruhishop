@@ -55,7 +55,7 @@
                     <img :src="mainLogoUrl" alt="春日商城 Logo" class="brand-logo-img">
                 </div>
                 <div class="brand-text">
-                    <h1>春 日 商 城</h1>
+                    <h1>广 东 支 部 春 日 商 城 </h1>
                     <div v-if="!isHomePage" class="brand-subtitle">{{ pageTitle }}</div>
                 </div>
             </div>
@@ -125,7 +125,7 @@
                 </div>
             </div>
             <div class="fund-notice">
-                本商城全部利润将投入应援团经费<br>用于活动、企划和日常开销
+                本商城全部利润将投入广东支部经费<br>用于活动、企划和日常开销
             </div>
         </div>
 
