@@ -30,23 +30,27 @@ const scrollToTop = () => {
               <img :src="logoSrc" alt="Logo" class="logo-img" onerror="this.style.display='none'" />
             </div>
             <div>
-              <h3 class="brand-name">凉宫春日应援团</h3>
-              <p class="brand-slug">Haruhifanclub</p>
+              <h3 class="brand-name">凉宫春日应援团广东支部</h3>
+              <p class="brand-slug">Haruhifanclub——GD Branch</p>
             </div>
           </div>
           <p class="brand-desc">
-            让世界变得更加热闹！<br>
-            《凉宫春日系列》的非营利粉丝团体。
+            从岭南出发让世界变得更加热闹！<br>
+            《凉宫春日系列》于广东地区的非营利粉丝团体。
           </p>
 
           <div class="social-row">
-            <a href="https://space.bilibili.com/201296348" target="_blank" class="social-btn bilibili" aria-label="Bilibili">
+            <a href="https://space.bilibili.com/489175335/dynamic" target="_blank" class="social-btn bilibili" aria-label="Bilibili">
               <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.737 1.548.967.966 1.494 2.227 1.549 3.735v6.526c-.055 1.508-.582 2.768-1.549 3.735-.968.967-2.227 1.494-3.737 1.548h-11.334c-1.51-.054-2.769-.581-3.737-1.548-.967-.967-1.494-2.227-1.549-3.735v-6.526c.055-1.508.582-2.769 1.549-3.735.968-.97 2.227-1.494 3.737-1.548h.854l-2.094-2.197.662-.681 2.825 2.898h3.94l2.822-2.898.665.681-2.093 2.197zm-10.42 5.094c-.818 0-1.482.663-1.482 1.482s.664 1.481 1.482 1.481c.819 0 1.482-.662 1.482-1.481s-.663-1.482-1.482-1.482zm7.214 0c-.818 0-1.482.663-1.482 1.482s.664 1.481 1.482 1.481c.819 0 1.482-.662 1.482-1.481s-.663-1.482-1.482-1.482z"/></svg>
               <span>哔哩哔哩</span>
             </a>
-            <a href="https://xhslink.com/m/8u0JGkC5KUE" target="_blank" class="social-btn xiaohongshu" aria-label="Xiaohongshu">
+            <a href="https://z.l6j.cn/QYQasC" target="_blank" class="social-btn xiaohongshu" aria-label="Xiaohongshu">
               <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H19C20.1 22 21 21.1 21 20V4C21 2.9 20.1 2 19 2ZM19 20H6V4H19V20ZM10 9L12.5 7.5L15 9V4H10V9Z" /></svg>
               <span>小红书</span>
+            </a>
+            <a href="https://z.l6j.cn/yPRfLt" target="_blank" class="social-btn douyin" aria-label="douyin">
+              <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H19C20.1 22 21 21.1 21 20V4C21 2.9 20.1 2 19 2ZM19 20H6V4H19V20ZM10 9L12.5 7.5L15 9V4H10V9Z" /></svg>
+              <span>抖音</span>
             </a>
           </div>
         </div>
@@ -55,11 +59,14 @@ const scrollToTop = () => {
           <div class="nav-group wide-group">
             <h4 class="group-header">主要站点</h4>
             <div class="card-list">
-              <a href="https://haruyuki.cn" target="_blank" class="nav-card">
+              <a href="https://gd.harufan.com/" target="_blank" class="nav-card">
                 <span class="dot blue"></span>
-                <span class="nav-text">凉宫春日应援团主站</span>
+                <span class="nav-text">凉宫春日应援团广东支部画作展示</span>
               </a>
-
+              <a href="https://lgcr.liweiyuan.cn/" target="_blank" class="nav-card">
+                <span class="dot green"></span>
+                <span class="nav-text">凉宫春日应援团主页</span>
+              </a>
               <a href="https://tts.haruyuki.cn" target="_blank" class="nav-card">
                 <span class="dot blue"></span>
                 <span class="nav-text">凉宫春日AI语音合成</span>
@@ -67,10 +74,6 @@ const scrollToTop = () => {
               <a href="https://rvc.haruyuki.cn" target="_blank" class="nav-card">
                 <span class="dot cyan"></span>
                 <span class="nav-text">凉宫春日AI声线转换</span>
-              </a>
-              <a href="https://haruhifanclub.notion.site/anitabi" target="_blank" class="nav-card">
-                <span class="dot yellow"></span>
-                <span class="nav-text">圣地巡礼照片墙</span>
               </a>
               <a href="https://haruyuki.cn/library" target="_blank" class="nav-card">
                 <span class="dot green"></span>
@@ -86,8 +89,8 @@ const scrollToTop = () => {
           <div class="nav-group">
             <h4 class="group-header">加入组织</h4>
             <div class="capsule-list">
-              <a href="https://haruyuki.cn/handbook" target="_blank" class="capsule-btn blue">
-                <span>团员手册</span>
+              <a href="https://qm.qq.com/q/nzykooxkvQ" target="_blank" class="capsule-btn blue">
+                <span>广东支部群</span>
                 <span class="arrow">→</span>
               </a>
               <a href="https://qm.qq.com/q/CVssyL3Pj2" target="_blank" class="capsule-btn green">
@@ -109,9 +112,9 @@ const scrollToTop = () => {
 
       <div class="footer-bottom">
         <div class="bottom-left">
-          <span class="copyright">© 2026 Haruhifanclub</span>
+          <span class="copyright">© 2026 Haruhifanclub——GD Branch</span>
           <span class="divider"></span>
-          <span class="slogan-mini">凉宫春日应援团开发组</span>
+          <span class="slogan-mini">凉宫春日应援团广东支部运营组</span>
         </div>
         <div class="bottom-right">
           <span>本商城为非营利项目</span>
