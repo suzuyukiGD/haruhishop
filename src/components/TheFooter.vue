@@ -61,11 +61,11 @@ const scrollToTop = () => {
             <div class="card-list">
               <a href="https://gd.harufan.com/" target="_blank" class="nav-card">
                 <span class="dot blue"></span>
-                <span class="nav-text">凉宫春日应援团广东支部画作展示</span>
+                <span class="nav-text">广东支部画作展示</span>
               </a>
               <a href="https://lgcr.liweiyuan.cn/" target="_blank" class="nav-card">
                 <span class="dot green"></span>
-                <span class="nav-text">凉宫春日应援团主页</span>
+                <span class="nav-text">广东支部主页</span>
               </a>
               <a href="https://tts.haruyuki.cn" target="_blank" class="nav-card">
                 <span class="dot blue"></span>
